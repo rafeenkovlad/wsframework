@@ -1,0 +1,17 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  WsFramework\Service\:
+    resource: '../../src/Service/'
+    exclude:
+      - '../../src/Service/HelpService/InjectionContainerService/'
+      - '../../src/Service/HelpService/TransportStrategyService/'
+
+  Symfony\Component\Validator\Validator\ValidatorInterface:
+    public: true
+    factory:
+      - WsFramework\Service\HelpService\InjectionContainerService\ValidatorFactory
+      - create

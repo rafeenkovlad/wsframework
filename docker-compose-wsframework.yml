@@ -1,0 +1,30 @@
+version: '3.5'
+
+networks:
+  srv:
+    name: srv
+    external: true
+
+services:
+  wsframework:
+    container_name: container_wsframework
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048M
+    build:
+      context: ./container/php8.4
+      args:
+        PHP_INI: ${PHP_INI}
+    volumes:
+      - ./:/var/www/html
+    ports:
+      - '${MAIN_HTTP_PORT}:${MAIN_HTTP_PORT}'
+      - '${FFMPEG_QUEUE_PORT}:${FFMPEG_QUEUE_PORT}'
+    networks:
+      srv:
+        ipv4_address: ${WSFRAMEWORK_IP:-192.162.0.120}
+    command: ${WSFRAMEWORK_COMMAND}
+    env_file:
+      - ./.env

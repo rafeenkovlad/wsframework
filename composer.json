@@ -1,0 +1,30 @@
+{
+    "name": "wswalker/wsframework",
+    "description": "Async multiprocess Workerman framework — infrastructure layer",
+    "type": "library",
+    "autoload": {
+        "psr-4": {
+            "WsFramework\\": "src/"
+        },
+        "files": [
+            "src/helpers.php"
+        ]
+    },
+    "require": {
+        "php": "^8.2",
+        "workerman/workerman": "^5.1.8",
+        "workerman/channel": "^1.2.2",
+        "workerman/globaldata": "^1.0",
+        "symfony/dotenv": "^5.4",
+        "symfony/validator": "^8.0",
+        "symfony/dependency-injection": "^8.0",
+        "symfony/config": "^8.0",
+        "symfony/yaml": "^7.4",
+        "psx/api": "7.5.0",
+        "hyperf/stringable": "^3.1",
+        "revolt/event-loop": "^1.0",
+        "psr/clock": "^1.0"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
