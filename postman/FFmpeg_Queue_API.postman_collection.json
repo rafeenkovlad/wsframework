@@ -1,0 +1,256 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"name": "FFmpeg Queue API",
+		"description": "JSON-RPC 2.0 API for FFmpeg Queue service",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8091"
+		}
+	],
+	"item": [
+		{
+			"name": "processVideoCallback",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.processVideoCallback\",\n\t\"params\": {\n\t\t\"s3Key\": \"input/video.mp4\",\n\t\t\"s3Bucket\": \"my-bucket\",\n\t\t\"outputS3Prefix\": \"output/\",\n\t\t\"maxRetries\": 3\n\t}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Submit a video for processing. s3Key is required."
+			},
+			"response": []
+		},
+		{
+			"name": "getJobStatus",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getJobStatus\",\n\t\"params\": {\n\t\t\"jobId\": \"job-uuid-here\"\n\t}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Get the status of a specific job. jobId is required."
+			},
+			"response": []
+		},
+		{
+			"name": "listJobs",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listJobs\",\n\t\"params\": {\n\t\t\"status\": \"pending\",\n\t\t\"limit\": 20,\n\t\t\"offset\": 0,\n\t\t\"sortOrder\": \"desc\"\n\t}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "List jobs with optional filtering by status, pagination and sort order."
+			},
+			"response": []
+		},
+		{
+			"name": "getQueueStats",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getQueueStats\",\n\t\"params\": {}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Get overall queue statistics."
+			},
+			"response": []
+		},
+		{
+			"name": "cancelJob",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.cancelJob\",\n\t\"params\": {\n\t\t\"jobId\": \"job-uuid-here\"\n\t}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Cancel a running or pending job. jobId is required."
+			},
+			"response": []
+		},
+		{
+			"name": "restartJob",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.restartJob\",\n\t\"params\": {\n\t\t\"jobId\": \"job-uuid-here\"\n\t}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Restart a failed or cancelled job. jobId is required."
+			},
+			"response": []
+		},
+		{
+			"name": "deleteJob",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.deleteJob\",\n\t\"params\": {\n\t\t\"jobId\": \"job-uuid-here\"\n\t}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Delete a job from the queue. jobId is required."
+			},
+			"response": []
+		},
+		{
+			"name": "purgeCompleted",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.purgeCompleted\",\n\t\"params\": {}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Purge all completed jobs from the queue."
+			},
+			"response": []
+		},
+		{
+			"name": "dlq",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.dlq\",\n\t\"params\": {\n\t\t\"limit\": 10\n\t}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Get messages from the dead letter queue."
+			},
+			"response": []
+		},
+		{
+			"name": "Doc",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"id\": 1,\n\t\"method\": \"Doc\",\n\t\"params\": {\n\t\t\"getMethodByName\": \"ffmpegQueue.processVideoCallback\"\n\t}\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Get OpenRPC documentation for a method by name."
+			},
+			"response": []
+		}
+	]
+}

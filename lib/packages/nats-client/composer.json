@@ -1,0 +1,17 @@
+{
+    "name": "package/nats-client",
+    "type": "library",
+    "autoload": {
+        "psr-4": {
+            "Package\\NatsClient\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Package\\NatsClient\\": "src/"
+        }
+    },
+    "require": {
+        "basis-company/nats": "^1.1.2"
+    }
+}

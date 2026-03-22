@@ -1,0 +1,18 @@
+imports:
+  - { resource: shared.yaml }
+
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  WsFramework\Service\HelpService\TransportStrategyService\OpenRpcTransportStrategy:
+    arguments:
+      $namespaceMethods: '\WsFramework\Action\Method'
+
+  WsFramework\Service\HelpService\TransportStrategyService\TransportStrategyInterface:
+    alias: WsFramework\Service\HelpService\TransportStrategyService\OpenRpcTransportStrategy
+
+  WsFramework\Service\NatsJetstreamService\NatsJetstreamService:
+    public: true

@@ -1,0 +1,304 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"name": "FFmpeg Queue API",
+		"description": "OpenRPC API для FFmpeg Queue сервиса.\n\nВсе методы вызываются через HTTP POST с JSON body.\nПараметры верхнего уровня: id, method, params.\n\nПайплайн: S3 Download → FFmpeg HLS → S3 Upload.\nСтатусы задач: s3_download_pending → s3_downloading → pending → processing → completed (или failed на любом этапе).\nS3 Upload: s3_upload_pending → s3_uploading → completed.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8091"
+		}
+	],
+	"item": [
+		{
+			"name": "Pipeline",
+			"description": "Запуск и управление полным пайплайном обработки видео.",
+			"item": [
+				{
+					"name": "processVideoCallback",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.processVideoCallback\",\n\t\"params\": {\n\t\t\"s3Key\": \"input/video.mp4\",\n\t\t\"s3Bucket\": \"my-bucket\",\n\t\t\"outputS3Prefix\": \"output/hls/\",\n\t\t\"maxRetries\": 3\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Запустить полный пайплайн: S3 Download → FFmpeg HLS → S3 Upload.\n\nОбязательные параметры:\n- s3Key — ключ файла в S3-бакете\n\nОпциональные:\n- s3Bucket — имя бакета (по умолчанию из ENV S3_BUCKET)\n- outputS3Prefix — префикс для HLS-файлов в S3 (по умолчанию dirname(s3Key)/hls/)\n- maxRetries — макс. ретраи для S3 операций (по умолчанию из ENV S3_PIPELINE_MAX_RETRIES или 3)"
+					},
+					"response": []
+				},
+				{
+					"name": "restartJob",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.restartJob\",\n\t\"params\": {\n\t\t\"jobId\": \"<jobId>\"\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Перезапустить задачу со статусом failed, cancelled или зависшую на стадии S3 (download/upload failed, stuck downloading/uploading).\n\nЛогика перезапуска:\n- s3_download_failed / s3_downloading (stuck) → повторный S3 Download\n- s3_upload_failed / s3_uploading (stuck) → повторный S3 Upload\n- failed / cancelled → сброс до pending, повторная отправка в ffmpeg очередь"
+					},
+					"response": []
+				},
+				{
+					"name": "cancelJob",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.cancelJob\",\n\t\"params\": {\n\t\t\"jobId\": \"<jobId>\"\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Отменить задачу со статусом pending или на стадии S3 (download/upload pending, downloading, uploading).\n\nЗадачи в статусе processing (FFmpeg уже работает) отменить нельзя.\nИспользуется CAS через revision для защиты от race condition."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Jobs",
+			"description": "Просмотр и управление отдельными задачами.",
+			"item": [
+				{
+					"name": "getJobStatus",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getJobStatus\",\n\t\"params\": {\n\t\t\"jobId\": \"<jobId>\"\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить текущее состояние задачи FFmpeg по её идентификатору.\n\nВозвращает полный объект задачи из KV: jobId, status, inputFile, outputFile, options, timestamps, ошибки."
+					},
+					"response": []
+				},
+				{
+					"name": "listJobs",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listJobs\",\n\t\"params\": {\n\t\t\"status\": null,\n\t\t\"limit\": 20,\n\t\t\"offset\": 0,\n\t\t\"sortOrder\": \"desc\"\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить список задач FFmpeg-очереди с фильтрацией по статусу и пагинацией.\n\nПараметры (все опциональные):\n- status — фильтр по статусу (s3_download_pending, s3_downloading, s3_download_failed, pending, processing, completed, failed, cancelled, s3_upload_pending, s3_uploading, s3_upload_failed)\n- limit — макс. элементов (1–200, по умолчанию 20)\n- offset — смещение (по умолчанию 0)\n- sortOrder — asc/desc по createdAt (по умолчанию asc)"
+					},
+					"response": []
+				},
+				{
+					"name": "deleteJob",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.deleteJob\",\n\t\"params\": {\n\t\t\"jobId\": \"<jobId>\"\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Удалить терминальную задачу из KV-хранилища очереди.\n\nДопустимые статусы для удаления: completed, failed, cancelled, s3_download_failed, s3_upload_failed.\nЗадачи в активных статусах (pending, processing, downloading, uploading) удалить нельзя."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Queue stats",
+			"description": "Статистика и DLQ.",
+			"item": [
+				{
+					"name": "getQueueStats",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getQueueStats\",\n\t\"params\": {}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить агрегированную статистику: KV по статусам, JetStream stream, DLQ per-stage (ffmpeg/s3Download/s3Upload), consumer и worker-процессы.\n\nПараметров нет.\n\nОтвет:\n- totalJobs — общее кол-во задач в KV\n- byStatus — подсчёт по каждому статусу\n- stream — состояние JetStream stream (messages, bytes, firstSeq, lastSeq)\n- dlq — DLQ per-stage: ffmpeg, s3Download, s3Upload (messages в каждом)\n- consumer — pending, ackFloor\n- workers — configured, busy, idle"
+					},
+					"response": []
+				},
+				{
+					"name": "dlq",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.dlq\",\n\t\"params\": {\n\t\t\"limit\": 10\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить DLQ: список задач со статусами failed, s3_download_failed, s3_upload_failed.\n\nОпциональные параметры:\n- limit — макс. элементов (1–200, по умолчанию 20)\n\nСортировка по finishedAt desc (самые свежие сбои первыми)."
+					},
+					"response": []
+				},
+				{
+					"name": "purgeCompleted",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.purgeCompleted\",\n\t\"params\": {}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Удалить из KV-хранилища все задачи со статусом completed.\n\nПараметров нет.\nВозвращает purged — количество удалённых задач."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Documentation",
+			"description": "OpenRPC-документация сервиса.",
+			"item": [
+				{
+					"name": "Doc — все методы",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"Doc\",\n\t\"params\": {}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить OpenRPC-описание всех методов сервиса."
+					},
+					"response": []
+				},
+				{
+					"name": "Doc — один метод",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"Doc\",\n\t\"params\": {\n\t\t\"getMethodByName\": \"ffmpegQueue.processVideoCallback\"\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить OpenRPC-описание одного метода по имени.\n\nОпциональные параметры:\n- getMethodByName — имя метода (например ffmpegQueue.processVideoCallback)"
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

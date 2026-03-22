@@ -1,0 +1,13 @@
+a:2:{i:7;a:2:{s:4:"name";s:17:"S3DownloadProcess";s:6:"listen";s:47:"unix:///var/www/html/tmp/s3DownloadProcess.sock";}i:8;a:2:{s:4:"name";s:15:"S3UploadProcess";s:6:"listen";s:45:"unix:///var/www/html/tmp/s3UploadProcess.sock";}}
+Start worker in DEBUG mode.
+---------------------------------------------------GLOBAL STATUS---------------------------------------------------------
+Workerman/5.1.10        PHP/8.4.19 (JIT on)           Linux/5.15.49-linuxkit-pr
+start time:2026-03-22 22:33:00   run 0 days 0 hours   load average: 0.25, 0.17, 0.1
+2 workers    2 processes
+name                  event-loop     exit_status     exit_count
+S3DownloadProcess     swoole         0               0               
+S3UploadProcess       swoole         0               0               
+---------------------------------------------------PROCESS STATUS--------------------------------------------------------
+pid	memory  listening                                       name              connections send_fail timers  total_request qps    status
+7	2.58M   unix:///var/www/html/tmp/s3DownloadProcess.sock S3DownloadProcess 0           0         0       0            
+8	2.56M   unix:///var/www/html/tmp/s3UploadProcess.sock   S3UploadProcess   0           0         0       0            
