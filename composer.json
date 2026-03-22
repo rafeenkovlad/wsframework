@@ -2,6 +2,12 @@
     "name": "wswalker/wsframework",
     "description": "Async multiprocess Workerman framework — infrastructure layer",
     "type": "library",
+    "repositories": [
+        {
+            "type": "path",
+            "url": "lib/packages/nats-client"
+        }
+    ],
     "autoload": {
         "psr-4": {
             "WsFramework\\": "src/"
@@ -23,7 +29,11 @@
         "psx/api": "7.5.0",
         "hyperf/stringable": "^3.1",
         "revolt/event-loop": "^1.0",
-        "psr/clock": "^1.0"
+        "psr/clock": "^1.0",
+        "package/nats-client": "*",
+        "aminyazdanpanah/php-ffmpeg-video-streaming": "^1.3.0",
+        "aws/aws-sdk-php": "^3.0",
+        "hyperf/guzzle": "^3.1"
     },
     "minimum-stability": "dev",
     "prefer-stable": true

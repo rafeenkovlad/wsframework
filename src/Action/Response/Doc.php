@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Action\Response;
 
 use WsFramework\Dto\ResponseDTO;
@@ -16,6 +18,5 @@ class Doc
             'Access-Control-Allow-Headers' => 'Content-Type',
         ];
         $connection->send(json_encode($responseDTO->result['doc']));
-        unset($responseDTO);
     }
 }

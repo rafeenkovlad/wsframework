@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Trait;
 
 use Hyperf\Stringable\Str;
@@ -37,5 +39,13 @@ trait EnumTrait
     public function getValue(): mixed
     {
         return $this->value;
+    }
+
+    /**
+     * @return array
+     */
+    public static function getValues(): array
+    {
+        return array_map(fn(self $enum) => $enum->value, static::cases());
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Pool\UseCase;
 
 use WsFramework\Dto\Pool\UseCaseDTO;

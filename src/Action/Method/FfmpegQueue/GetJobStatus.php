@@ -6,10 +6,14 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
+use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Pool\Http\PoolHttpConnection;
+use WsFramework\Trait\FfmpegJobIdValidationTrait;
 
 class GetJobStatus extends MethodAbstract
 {
+    use FfmpegJobIdValidationTrait;
 
     public static function getMethodName(): string
     {
@@ -28,7 +32,7 @@ class GetJobStatus extends MethodAbstract
 
     public static function getPoolConnectionClass(): ?string
     {
-        return null;
+        return PoolHttpConnection::class;
     }
 
     public static function isDisabledResponse(): bool
@@ -42,30 +46,35 @@ class GetJobStatus extends MethodAbstract
 
     protected static function process(int $workerId, int $connectionId, MethodDTO $methodDTO): array
     {
-        // TODO: реализовать получение статуса задачи
-        return [];
+        $jobId = static::extractJobId($methodDTO);
+        if ($jobId === null) {
+            return [];
+        }
+
+        $value = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status')->get($jobId);
+
+        if (!$value) {
+            $methodDTO->response->errors = [['field' => 'jobId', 'message' => 'Job not found']];
+            return [];
+        }
+
+        return json_decode($value, true, 512, JSON_THROW_ON_ERROR);
     }
 
     protected static function getDescription(): string
     {
-        return 'Get status of an FFmpeg queue job';
+        return 'Получить текущее состояние задачи FFmpeg по её идентификатору.';
     }
 
     protected static function getSchemaArgsDescriptor(): array
     {
-        return [static::getContentDescriptor()];
+        return [
+            OpenRpcSchema::jobIdDescriptor(),
+        ];
     }
 
     protected static function getResult(): ?array
     {
-        return [
-            'type' => 'object',
-            'properties' => [
-                'jobId' => ['type' => 'string'],
-                'status' => ['type' => 'string'],
-                'progress' => ['type' => 'integer'],
-                'errorMessage' => ['type' => 'string'],
-            ],
-        ];
+        return OpenRpcSchema::ffmpegJobSchema();
     }
 }

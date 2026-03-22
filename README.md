@@ -70,6 +70,7 @@ HTTP POST / (JSON body)
 
 | Метод | Класс | Назначение |
 | --- | --- | --- |
+| `Doc` | `Doc` | Получить OpenRPC-описание всех доступных методов |
 | `ffmpegQueue.addJob` | `AddJob` | Добавить задачу в очередь |
 | `ffmpegQueue.getJobStatus` | `GetJobStatus` | Получить статус задачи |
 | `ffmpegQueue.cancelJob` | `CancelJob` | Отменить задачу в статусе `pending` |
@@ -85,6 +86,18 @@ HTTP POST / (JSON body)
 ### Пример OpenRPC-запроса
 
 Сервис слушает `http://<FFMPEG_QUEUE_HOST>:<FFMPEG_QUEUE_PORT>/`.
+
+Получить описание методов:
+
+```bash
+curl -X POST http://127.0.0.1:8091/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "id": 1,
+    "method": "Doc",
+    "params": {}
+  }'
+```
 
 ```bash
 curl -X POST http://127.0.0.1:8091/ \
@@ -187,6 +200,14 @@ docker network create srv
 ```
 
 `reload.sh` в текущей реализации не делает hot reload без даунтайма: он останавливает стек, очищает `./tmp/*` и поднимает контейнер заново.
+
+Для диагностики JetStream в compose добавлен `nats-box`:
+
+```bash
+docker exec -it container_natsbox sh
+nats --server nats://nats:4222 stream ls
+nats --server nats://nats:4222 stream view s3_pipeline_dlq
+```
 
 ### Без Docker
 

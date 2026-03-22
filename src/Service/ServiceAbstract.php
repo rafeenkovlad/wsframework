@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Service;
 
 use WsFramework\Service\HelpService\TransportStrategyService\TransportStrategyInterface;

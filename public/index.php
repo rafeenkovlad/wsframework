@@ -3,9 +3,7 @@
 declare(strict_types=1);
 
 use WsFramework\Config\ENV;
-use WsFramework\Channel\FfmpegQueueChannel;
-use WsFramework\GlobalData\FfmpegQueueGlobalData;
-use WsFramework\Process\DefaultProcess\FfmpegQueueProcess\FfmpegQueueProcess;
+use WsFramework\Process\DefaultProcess\NatsJetstreamProcess\NatsJetstreamProcess;
 use Workerman\Connection\TcpConnection;
 use Workerman\Worker;
 
@@ -23,10 +21,8 @@ Worker::$pidFile = HOME . '/tmp/workerman.pid';
 // Initialize environment
 ENV::init();
 
-// FFmpeg Queue Process
-FfmpegQueueChannel::main();
-FfmpegQueueGlobalData::main();
-$ffmpegQueue = new FfmpegQueueProcess();
-$ffmpegQueue->init();
+// NatsJetstream HTTP Ingress Process (port 8091)
+$natsIngress = new NatsJetstreamProcess();
+$natsIngress->init();
 
 Worker::runAll();

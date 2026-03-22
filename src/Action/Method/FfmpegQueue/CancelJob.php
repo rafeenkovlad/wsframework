@@ -6,11 +6,15 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
+use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Pool\Http\PoolHttpConnection;
+use WsFramework\Trait\FfmpegJobIdValidationTrait;
 
 class CancelJob extends MethodAbstract
 {
-
+    use FfmpegJobIdValidationTrait;
     public static function getMethodName(): string
     {
         return 'ffmpegQueue.cancelJob';
@@ -28,7 +32,7 @@ class CancelJob extends MethodAbstract
 
     public static function getPoolConnectionClass(): ?string
     {
-        return null;
+        return PoolHttpConnection::class;
     }
 
     public static function isDisabledResponse(): bool
@@ -42,27 +46,81 @@ class CancelJob extends MethodAbstract
 
     protected static function process(int $workerId, int $connectionId, MethodDTO $methodDTO): array
     {
-        // TODO: реализовать отмену задачи
-        return [];
+        $jobId = static::extractJobId($methodDTO);
+        if ($jobId === null) {
+            return [];
+        }
+
+        $kv = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
+        $entry = $kv->getEntry($jobId);
+
+        if (!$entry) {
+            $methodDTO->response->errors = [['field' => 'jobId', 'message' => 'Job not found']];
+            return [];
+        }
+
+        $jobData = json_decode($entry->value, true, 512, JSON_THROW_ON_ERROR);
+        $status = $jobData['status'] ?? '';
+
+        $cancellable = [
+            FfmpegJobStatus::PENDING->value,
+            FfmpegJobStatus::S3_DOWNLOAD_PENDING->value,
+            FfmpegJobStatus::S3_DOWNLOADING->value,
+            FfmpegJobStatus::S3_UPLOAD_PENDING->value,
+            FfmpegJobStatus::S3_UPLOADING->value,
+        ];
+        if (!in_array($status, $cancellable, true)) {
+            $methodDTO->response->errors = [[
+                'field' => 'status',
+                'message' => "Only pending or in-progress S3 jobs can be cancelled, current status: {$status}",
+            ]];
+            return [];
+        }
+
+        $jobData['status'] = FfmpegJobStatus::CANCELLED->value;
+        $jobData['updatedAt'] = date('c');
+        $jobData['finishedAt'] = date('c');
+
+        try {
+            $kv->update($jobId, json_encode($jobData, JSON_THROW_ON_ERROR), $entry->revision);
+        } catch (\Throwable) {
+            $methodDTO->response->errors = [[
+                'field' => 'jobId',
+                'message' => 'Revision mismatch — job state changed (possibly already picked up by consumer)',
+            ]];
+            return [];
+        }
+
+        return ['jobId' => $jobId, 'cancelled' => true];
     }
 
     protected static function getDescription(): string
     {
-        return 'Cancel a pending FFmpeg queue job';
+        return 'Отменить задачу со статусом pending или на стадии S3 (download/upload pending, downloading, uploading).';
     }
 
     protected static function getSchemaArgsDescriptor(): array
     {
-        return [static::getContentDescriptor()];
+        return [
+            OpenRpcSchema::jobIdDescriptor(),
+        ];
     }
 
     protected static function getResult(): ?array
     {
         return [
             'type' => 'object',
+            'required' => ['jobId', 'cancelled'],
+            'additionalProperties' => false,
             'properties' => [
-                'jobId' => ['type' => 'string'],
-                'cancelled' => ['type' => 'boolean'],
+                'jobId' => [
+                    'type' => 'string',
+                    'description' => 'Идентификатор отменённой задачи.',
+                ],
+                'cancelled' => [
+                    'type' => 'boolean',
+                    'description' => 'Признак успешной отмены.',
+                ],
             ],
         ];
     }

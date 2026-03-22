@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Process\DefaultProcess;
 
+use Workerman\Events\Fiber;
 use WsFramework\Config\ENV;
 use WsFramework\Process\Worker;
-use Workerman\Events\Fiber;
 
 abstract class DefaultProcessAbstract implements WorkerInterface
 {
@@ -117,7 +119,7 @@ abstract class DefaultProcessAbstract implements WorkerInterface
     /**
      * @return void
      */
-    private static function initWorker(): void
+    protected static function initWorker(): void
     {
         static::$worker = new Worker(static::getSocketName());
         static::$worker->name = static::$nameProcess;

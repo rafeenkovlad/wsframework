@@ -1,11 +1,36 @@
 version: '3.5'
 
 networks:
-  srv:
-    name: srv
-    external: true
+  srv-queue:
+    name: srv-queue
+    ipam:
+      config:
+        - subnet: ${SUBNET}
+
+volumes:
+  nats_storage:
 
 services:
+  nats:
+    build:
+      context: ./container/nats
+    command: -c /etc/nats/nats-server.conf
+    volumes:
+      - nats_storage:/nats/storage
+    networks:
+      srv-queue:
+
+  nats-box:
+    container_name: container_natsbox
+    image: natsio/nats-box:latest
+    command: sh -c "sleep infinity"
+    environment:
+      NATS_URL: nats://nats:4222
+    networks:
+      srv-queue:
+    depends_on:
+      - nats
+
   wsframework:
     container_name: container_wsframework
     deploy:
@@ -20,11 +45,51 @@ services:
     volumes:
       - ./:/var/www/html
     ports:
-      - '${MAIN_HTTP_PORT}:${MAIN_HTTP_PORT}'
-      - '${FFMPEG_QUEUE_PORT}:${FFMPEG_QUEUE_PORT}'
+      - '${NATS_JETSTREAM_HTTP_PORT}:${NATS_JETSTREAM_HTTP_PORT}'
     networks:
-      srv:
-        ipv4_address: ${WSFRAMEWORK_IP:-192.162.0.120}
+      srv-queue:
+        ipv4_address: ${WSFRAMEWORK_IP:-192.163.0.120}
     command: ${WSFRAMEWORK_COMMAND}
     env_file:
       - ./.env
+    depends_on:
+      - nats
+
+  ffmpeg:
+    container_name: container_ffmpeg
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048M
+    build:
+      context: ./container/ffmpeg
+    volumes:
+      - ./:/var/www/html
+    networks:
+      srv-queue:
+        ipv4_address: ${FFMPEG_IP:-192.163.0.121}
+    command: ${FFMPEG_COMMAND}
+    env_file:
+      - ./.env
+    depends_on:
+      - nats
+
+  s3-worker:
+    container_name: container_s3worker
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024M
+    build:
+      context: ./container/php8.4
+    volumes:
+      - ./:/var/www/html
+    networks:
+      srv-queue:
+    command: ${S3_WORKER_COMMAND}
+    env_file:
+      - ./.env
+    depends_on:
+      - nats

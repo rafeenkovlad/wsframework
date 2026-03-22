@@ -6,8 +6,6 @@ WORKDIR /var/www/html
 
 COPY event.ini "${PHP_INI_DIR}/conf.d/"
 COPY ${PHP_INI} "${PHP_INI_DIR}/conf.d/"
-COPY php.ini-development "${PHP_INI_DIR}"
-COPY php.ini-production "${PHP_INI_DIR}"
 
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 

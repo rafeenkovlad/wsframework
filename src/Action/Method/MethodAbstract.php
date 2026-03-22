@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Action\Method;
 
 use WsFramework\Action\Response\Error;
@@ -117,7 +119,6 @@ abstract class MethodAbstract extends MethodOpenRPCAbstract
                 static::sendResponse($connectionId, $methodDTO->response);
                 static::afterSendResponse($workerId, $connectionId, $methodDTO);
                 static::closeConnection($workerId, $connectionId);
-                static::unsetMethodDTO($methodDTO);
             }, $workerId . static::getMethodName() . 'Resp');
     }
 
@@ -147,7 +148,6 @@ abstract class MethodAbstract extends MethodOpenRPCAbstract
             if (!static::isDisabledResponse()) {
                 static::publishChannelResponse($workerId, $connectionId, $methodDTO);
             }
-            static::unsetMethodDTO($methodDTO);
         }, $worker->id . static::getMethodName());
     }
 
@@ -192,15 +192,6 @@ abstract class MethodAbstract extends MethodOpenRPCAbstract
     private static function warning(string $warning): void
     {
         echo static::getMethodName() . ": Предупреждение, {$warning}" . PHP_EOL;
-    }
-
-    /**
-     * @param $methodDTO
-     * @return void
-     */
-    private static function unsetMethodDTO($methodDTO): void
-    {
-        unset($methodDTO);
     }
 
     protected static function defineCloseConnectionStrategy(): ?CloseConnectionStrategyInterface
@@ -266,7 +257,6 @@ abstract class MethodAbstract extends MethodOpenRPCAbstract
         static::errorsFormated($errors);
         $methodDTO->response->errors = $errors;
         static::sendResponse($connectionId, $methodDTO->response, Error::class);
-        static::unsetMethodDTO($methodDTO);
     }
 
     private static function isWithoutChannel(): bool
@@ -279,6 +269,5 @@ abstract class MethodAbstract extends MethodOpenRPCAbstract
         static::handlerResultProcess($workerId, $connectionId, $methodDTO);
         static::sendResponse($connectionId, $methodDTO->response);
         static::afterSendResponse($workerId, $connectionId, $methodDTO);
-        static::unsetMethodDTO($methodDTO);
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Action\Response;
 
 class Error extends ResponseAbstract

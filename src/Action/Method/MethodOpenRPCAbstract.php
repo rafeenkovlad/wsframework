@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Action\Method;
 
 use PSX\OpenRPC\ContentDescriptor;
@@ -49,22 +51,6 @@ abstract class MethodOpenRPCAbstract
         $m->setSummary(static::getDescription());
         $m->setParams(static::getSchemaArgsDescriptor());
         $m->setResult(static::getSchemaResponse());
-//        $method = MethodDTO::createFromArray(
-//            [
-//                'id' => 1,
-//                'method' => static::getMethodName(),
-//                'params' => static::getSchemaArgsDescriptor()
-//            ]
-//        );
-//        $response = ResponseDTO::createFromArray(
-//            [
-//                'id' => 1,
-//                'response' => static::getResponseClass()::getResponseName(),
-//                'fromMethod' => static::getMethodName(),
-//                'result' => static::getResult(),
-//            ],
-//        );
-//        $m->setExamples(['name' => $method->method, 'params' => $method->params, 'result' => $response]);
 
         return $m;
     }

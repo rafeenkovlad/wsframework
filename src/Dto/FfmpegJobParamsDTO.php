@@ -10,11 +10,10 @@ class FfmpegJobParamsDTO extends DataTransferObject
 {
     public function __construct(
         #[Assert\NotBlank]
-        public ?string $inputFile,
-        #[Assert\NotBlank]
-        public ?string $outputFile,
-        public ?array  $options,
-        public ?int    $priority,
+        public readonly ?string $inputFile,
+        public readonly ?string $outputFile,
+        public readonly ?array  $options,
+        public readonly ?int    $priority,
     ) {
     }
 

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Action\Response;
 
 use WsFramework\Dto\ResponseDTO;
@@ -8,12 +10,12 @@ use Workerman\Connection\TcpConnection;
 abstract class ResponseAbstract
 {
 
-    protected static function defaultHeaders(): array
+    public static function defaultHeaders(): array
     {
         return [
             'Content-Type' => 'application/json; charset=utf-8',
             'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'POST, OPTIONS',
+            'Access-Control-Allow-Methods' => 'POST, OPTIONS, GET',
             'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
         ];
     }
@@ -29,7 +31,6 @@ abstract class ResponseAbstract
             $connection->headers = static::headers();
         }
         $connection->send($responseDTO->jsonEncode());
-        unset($responseDTO);
     }
 
     /**

@@ -1,7 +1,8 @@
 <?php
 
-namespace WsFramework\Dto;
+declare(strict_types=1);
 
+namespace WsFramework\Dto;
 
 abstract class DataTransferObject
 {

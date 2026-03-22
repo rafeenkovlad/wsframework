@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\GlobalData;
 
 class Server extends \GlobalData\Server

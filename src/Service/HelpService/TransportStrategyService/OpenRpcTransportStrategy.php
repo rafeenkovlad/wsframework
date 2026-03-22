@@ -1,15 +1,20 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Service\HelpService\TransportStrategyService;
 
-use WsFramework\Action\Method\MethodAbstract;
+use WsFramework\Action\Response\MethodNotFound;
+use WsFramework\Action\Response\ResponseAbstract;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Trait\TransportStrategyTrait;
 use Workerman\Connection\TcpConnection;
 use Workerman\Coroutine;
 use Workerman\Protocols\Http\Request;
 
 class OpenRpcTransportStrategy implements TransportStrategyInterface
 {
+    use TransportStrategyTrait;
     private const GC_EVERY_MESSAGES = 10;
 
     public function __construct(
@@ -29,6 +34,12 @@ class OpenRpcTransportStrategy implements TransportStrategyInterface
     ): callable
     {
         return function (TcpConnection $connection, string|array|Request $data) use ($isCondition) {
+            if ($data instanceof Request && $data->method() === 'OPTIONS') {
+                $connection->headers = ResponseAbstract::defaultHeaders();
+                $connection->send('');
+                return;
+            }
+
             Coroutine::create(function () use ($connection, $data, $isCondition) {
                 echo "onMessage\n";
 
@@ -103,7 +114,6 @@ class OpenRpcTransportStrategy implements TransportStrategyInterface
 
         static::dataWithHeaders($data, $headers);
         static::dataWithPayload($data, $payload);
-
         return MethodDTO::createFromArray(
             [
                 'id' => $data['id'],
@@ -130,51 +140,19 @@ class OpenRpcTransportStrategy implements TransportStrategyInterface
         }
     }
 
-    /**
-     * @param array $data
-     * @param array|null $headers
-     * @return void
-     */
-    private static function dataWithHeaders(array &$data, ?array $headers): void
-    {
-        if ($headers) {
-            $data['headers'] = $headers;
-        } else {
-            $data['headers'] = [];
-        }
-    }
-
-    private static function dataWithPayload(array &$data, ?array $payload): void
-    {
-        if ($payload) {
-            $data['payload'] = $payload;
-        }
-    }
-
     protected function responseMethodNotFound(TcpConnection $connection, MethodDTO $methodDTO): void
     {
         echo 'warning:  method not found' . "\n";
-        // TODO: implement responseMethodNotFound in application layer
+        MethodNotFound::apply($connection, $methodDTO->response);
+        $connection->close();
     }
 
     protected function responseBadRequest(TcpConnection $connection): void
     {
         echo 'warning:  bad request' . "\n";
-        // TODO: implement responseBadRequest in application layer
-    }
-
-    protected static function publishChannel(TcpConnection $connection, MethodDTO $methodDTO, string $methodClass): void
-    {
-        echo 'connection_id: ' . $connection->id . "\n";
-        echo 'method: ' . $methodDTO->method . "\n";
-        echo 'method_class: ' . $methodClass . "\n";
-
-        /** @var MethodAbstract $methodClass*/
-        $methodClass::publishChannel(
-            $connection->worker->id,
-            $connection->id,
-            $methodDTO,
-        );
+        $connection->headers = ResponseAbstract::defaultHeaders();
+        $connection->send(json_encode(['error' => 'Bad Request']));
+        $connection->close();
     }
 
     protected function defineMethodClass(string $method): string

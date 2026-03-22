@@ -7,19 +7,27 @@ namespace WsFramework\Dto;
 class FfmpegJobDTO extends DataTransferObject
 {
     public function __construct(
-        public ?string $jobId,
-        public ?string $status,
-        public ?string $inputFile,
-        public ?string $outputFile,
-        public ?array  $options,
-        public ?string $errorMessage,
-        public ?int    $progress,
-        public ?int    $priority,
-        public ?int    $retryCount,
-        public ?int    $maxRetries,
-        public ?string $nextRetryAt,
-        public ?string $createdAt,
-        public ?string $updatedAt,
+        public readonly ?string $jobId,
+        public readonly ?string $status,
+        public readonly ?string $inputFile,
+        public readonly ?string $outputFile,
+        public readonly ?array  $options,
+        public readonly ?string $errorMessage,
+        public readonly ?int    $progress,
+        public readonly ?int    $priority,
+        public readonly ?int    $retryCount,
+        public readonly ?int    $maxRetries,
+        public readonly ?string $nextRetryAt,
+        public readonly ?string $createdAt,
+        public readonly ?string $updatedAt,
+        public readonly ?string $s3Bucket,
+        public readonly ?string $outputS3Prefix,
+        public readonly ?string $localHlsDir,
+        public readonly ?string $playlistFile,
+        public readonly ?int    $segmentCount,
+        public readonly ?string $startedAt,
+        public readonly ?string $finishedAt,
+        public readonly ?string $error,
     ) {
     }
 
@@ -49,6 +57,14 @@ class FfmpegJobDTO extends DataTransferObject
             'nextRetryAt' => null,
             'createdAt' => null,
             'updatedAt' => null,
+            's3Bucket' => null,
+            'outputS3Prefix' => null,
+            'localHlsDir' => null,
+            'playlistFile' => null,
+            'segmentCount' => null,
+            'startedAt' => null,
+            'finishedAt' => null,
+            'error' => null,
         ];
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\UseCase;
 
 use WsFramework\Dto\DataTransferObject;
@@ -41,5 +43,5 @@ abstract class AbstractUseCase
         return $static?->useCase;
     }
 
-    abstract public static function handle(DataTransferObject $DTO);
+    abstract public static function handle(DataTransferObject $DTO): mixed;
 }

@@ -1,8 +1,9 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Trait;
 
-use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Dto\MethodDTO;
 use Workerman\Connection\TcpConnection;
 use Workerman\Coroutine;
@@ -10,6 +11,7 @@ use Workerman\Protocols\Http\Request;
 
 trait OnMessageTransportOpenRpcTrait
 {
+    use TransportStrategyTrait;
     /**
      * @var array
      */
@@ -127,27 +129,6 @@ trait OnMessageTransportOpenRpcTrait
         }
     }
 
-    /**
-     * @param array $data
-     * @param array|null $headers
-     * @return void
-     */
-    private static function dataWithHeaders(array &$data, ?array $headers): void
-    {
-        if ($headers) {
-            $data['headers'] = $headers;
-        } else {
-            $data['headers'] = [];
-        }
-    }
-
-    private static function dataWithPayload(array &$data, ?array $payload): void
-    {
-        if ($payload) {
-            $data['payload'] = $payload;
-        }
-    }
-
     protected static function responseMethodNotFound(TcpConnection $connection, MethodDTO $methodDTO): void
     {
         echo 'warning:  method not found' . "\n";
@@ -156,20 +137,6 @@ trait OnMessageTransportOpenRpcTrait
     protected static function responseBadRequest(TcpConnection $connection): void
     {
         echo 'warning:  bad request' . "\n";
-    }
-
-    protected static function publishChannel(TcpConnection $connection, MethodDTO $methodDTO, string $methodClass): void
-    {
-        echo 'connection_id: ' . $connection->id . "\n";
-        echo 'method: ' . $methodDTO->method . "\n";
-        echo 'method_class: ' . $methodClass . "\n";
-
-        /** @var MethodAbstract $methodClass*/
-        $methodClass::publishChannel(
-            $connection->worker->id,
-            $connection->id,
-            $methodDTO,
-        );
     }
 
     /**

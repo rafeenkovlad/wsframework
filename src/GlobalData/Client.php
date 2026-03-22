@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\GlobalData;
 
 class Client extends \GlobalData\Client

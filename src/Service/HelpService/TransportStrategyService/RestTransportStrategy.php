@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace WsFramework\Service\HelpService\TransportStrategyService;
 
-use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Attribute\RestRoute;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Trait\TransportStrategyTrait;
 use FilesystemIterator;
 use Hyperf\Stringable\Str;
 use RecursiveDirectoryIterator;
@@ -18,6 +20,7 @@ use Workerman\Protocols\Http\Request;
 
 class RestTransportStrategy implements TransportStrategyInterface
 {
+    use TransportStrategyTrait;
     private static int $requestId = 0;
 
     /**
@@ -176,20 +179,6 @@ class RestTransportStrategy implements TransportStrategyInterface
         return $this->restMethods[Str::upper($method)][$route] = $methodClass;
     }
 
-    protected static function publishChannel(TcpConnection $connection, MethodDTO $methodDTO, string $methodClass): void
-    {
-        echo 'connection_id: ' . $connection->id . "\n";
-        echo 'method: ' . $methodDTO->method . "\n";
-        echo 'method_class: ' . $methodClass . "\n";
-
-        /** @var MethodAbstract $methodClass */
-        $methodClass::publishChannel(
-            $connection->worker->id,
-            $connection->id,
-            $methodDTO,
-        );
-    }
-
     private static function dataToArray(string|array|Request &$data): void
     {
         if ($data instanceof Request) {
@@ -203,27 +192,6 @@ class RestTransportStrategy implements TransportStrategyInterface
                 $decoded = json_decode($body, true);
                 $data = is_array($decoded) ? $decoded : [];
             }
-        }
-    }
-
-    /**
-     * @param array $data
-     * @param array|null $headers
-     * @return void
-     */
-    private static function dataWithHeaders(array &$data, ?array $headers): void
-    {
-        if ($headers) {
-            $data['headers'] = $headers;
-        } else {
-            $data['headers'] = [];
-        }
-    }
-
-    private static function dataWithPayload(array &$data, ?array $payload): void
-    {
-        if ($payload) {
-            $data['payload'] = $payload;
         }
     }
 
