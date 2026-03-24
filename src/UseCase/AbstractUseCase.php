@@ -10,8 +10,11 @@ use WsFramework\Pool\UseCase\PoolUseCase;
 
 abstract class AbstractUseCase
 {
-    private function __construct(protected DataTransferObject $DTO)
+    private function __construct(protected DataTransferObject $DTO, ...$args)
     {
+        foreach ($args as $key => $arg) {
+            $this->{$key} = $arg;
+        }
     }
 
     /**
@@ -43,5 +46,5 @@ abstract class AbstractUseCase
         return $static?->useCase;
     }
 
-    abstract public static function handle(DataTransferObject $DTO): mixed;
+    abstract public static function handle(DataTransferObject $DTO, ...$args);
 }

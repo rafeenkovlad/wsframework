@@ -9,6 +9,7 @@ use WsFramework\Action\Response\Ok;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Dto\ListJobsParamsDTO;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Middleware\MethodParamsToDTO;
 use Symfony\Component\Validator\Validation;
 use WsFramework\Pool\Http\PoolHttpConnection;
@@ -66,11 +67,12 @@ class ListJobs extends MethodAbstract
         $entries = $kv->getAll();
         $jobs = [];
         foreach ($entries as $entry) {
-            $job = json_decode($entry->value, true, 512, JSON_THROW_ON_ERROR);
-            if (!is_array($job)) {
+            $data = json_decode($entry->value, true);
+            if (!is_array($data) || empty($data['jobId'])) {
                 continue;
             }
-            if ($params->status !== null && ($job['status'] ?? '') !== $params->status) {
+            $job = JobKVDTO::createFromArray($data);
+            if ($params->status !== null && ($job->status ?? '') !== $params->status) {
                 continue;
             }
             $jobs[] = $job;
@@ -78,15 +80,15 @@ class ListJobs extends MethodAbstract
 
         $total = count($jobs);
 
-        usort($jobs, function (array $a, array $b) use ($params) {
-            $cmp = ($a['createdAt'] ?? '') <=> ($b['createdAt'] ?? '');
+        usort($jobs, function (JobKVDTO $a, JobKVDTO $b) use ($params) {
+            $cmp = ($a->createdAt ?? '') <=> ($b->createdAt ?? '');
             return $params->sortOrder === 'desc' ? -$cmp : $cmp;
         });
 
         $jobs = array_slice($jobs, $params->offset, $params->limit);
 
         return [
-            'jobs' => $jobs,
+            'jobs' => array_map(fn(JobKVDTO $j) => $j->toArray(), $jobs),
             'total' => $total,
             'limit' => $params->limit,
             'offset' => $params->offset,

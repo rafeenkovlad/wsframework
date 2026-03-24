@@ -8,6 +8,7 @@ use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Pool\Http\PoolHttpConnection;
 use WsFramework\Trait\FfmpegJobIdValidationTrait;
 
@@ -58,7 +59,8 @@ class GetJobStatus extends MethodAbstract
             return [];
         }
 
-        return json_decode($value, true, 512, JSON_THROW_ON_ERROR);
+        $jobData = JobKVDTO::createFromArray(json_decode($value, true, 512, JSON_THROW_ON_ERROR));
+        return $jobData->toArray();
     }
 
     protected static function getDescription(): string

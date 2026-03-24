@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace WsFramework\Process\DefaultProcess;
 
 use Package\NatsClient\NatsKeyValueInterface;
+use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Process\Worker;
+use WsFramework\UseCase\JobKVMergeUseCase;
 
 abstract class BackgroundProcessAbstract extends DefaultProcessAbstract
 {
+
     protected static function setProtocol(): void
     {
     }
@@ -65,19 +68,8 @@ abstract class BackgroundProcessAbstract extends DefaultProcessAbstract
         })();
     }
 
-    /**
-     * @param NatsKeyValueInterface $kv
-     * @param string $jobId
-     * @param array $update
-     * @return void
-     * @throws \JsonException
-     */
-    public static function kvMerge(NatsKeyValueInterface $kv, string $jobId, array $update): void
+    public static function kvMerge(NatsKeyValueInterface $kv, JobKVDTO $update): void
     {
-        $existing = $kv->get($jobId);
-        $data = $existing ? (json_decode($existing, true, 512, JSON_THROW_ON_ERROR) ?: []) : [];
-        $update['updatedAt'] ??= date('c');
-
-        $kv->put($jobId, json_encode(array_merge($data, $update), JSON_THROW_ON_ERROR));
+        JobKVMergeUseCase::handle($update, $kv);
     }
 }

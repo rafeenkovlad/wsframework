@@ -13,7 +13,7 @@ use PSX\OpenRPC\Method;
 use PSX\OpenRPC\OpenRPC;
 use WsFramework\Action\Method\FfmpegQueue\CancelJob;
 use WsFramework\Action\Method\FfmpegQueue\DeleteJob;
-use WsFramework\Action\Method\FfmpegQueue\Dlq;
+use WsFramework\Action\Method\FfmpegQueue\ListFailedJobs;
 use WsFramework\Action\Method\FfmpegQueue\GetJobStatus;
 use WsFramework\Action\Method\FfmpegQueue\GetQueueStats;
 use WsFramework\Action\Method\FfmpegQueue\ListJobs;
@@ -197,7 +197,7 @@ class Doc extends MethodAbstract
             RestartJob::class,
             DeleteJob::class,
             PurgeCompleted::class,
-            Dlq::class,
+            ListFailedJobs::class,
         ];
     }
 

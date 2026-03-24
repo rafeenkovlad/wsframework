@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace WsFramework\Service\NatsJetstreamService;
 
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsDlqChannel;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
-use WsFramework\Channel\S3NatsChannel\S3NatsDlqChannel;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Service\ServiceAbstract;
 use WsFramework\Service\HelpService\TransportStrategyService\TransportStrategyInterface;
@@ -27,9 +25,7 @@ class NatsJetstreamService extends ServiceAbstract
         return function (Worker $worker) {
             // Initialize NATS connection in this worker process
             FfmpegNatsChannel::main();
-            FfmpegNatsDlqChannel::main();
             S3NatsChannel::main();
-            S3NatsDlqChannel::main();
 
             echo "NatsJetstreamService started on worker {$worker->id}\n";
         };

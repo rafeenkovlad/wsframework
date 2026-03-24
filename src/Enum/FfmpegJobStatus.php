@@ -20,4 +20,7 @@ enum FfmpegJobStatus: string
     case S3_UPLOAD_PENDING = 's3_upload_pending';
     case S3_UPLOADING      = 's3_uploading';
     case S3_UPLOAD_FAILED  = 's3_upload_failed';
+    case S3_DOWNLOAD_RESTARTED = 's3_download_restarted';
+    case PROCESSING_RESTARTED  = 'processing_restarted';
+    case S3_UPLOAD_RESTARTED   = 's3_upload_restarted';
 }

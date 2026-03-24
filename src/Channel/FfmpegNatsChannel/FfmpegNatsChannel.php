@@ -9,6 +9,7 @@ use WsFramework\Channel\SelectEventInterface;
 use Hyperf\Stringable\Str;
 use Package\NatsClient\NatsClient;
 use Package\NatsClient\NatsKeyValueInterface;
+use WsFramework\Exception\S3\PipelineException;
 
 class FfmpegNatsChannel extends ChannelAbstract
 {
@@ -64,7 +65,23 @@ class FfmpegNatsChannel extends ChannelAbstract
     {
         $consumer = NatsClient::getConsumer($this->getConsumerName($method));
         $queue = NatsClient::getConsumerQueue($this->getConsumerName($method));
-        NatsClient::on($consumer, $queue, $callback);
+        NatsClient::on($consumer, $queue, $this->onException($callback));
+    }
+
+    public function onException(callable $callback): callable
+    {
+        return function (...$args) use ($callback)
+        {
+            try {
+                $callback(...$args);
+            } catch (PipelineException $e) {
+                echo "FfmpegNatsChannel: {$e->getMessage()}\n";
+                return;
+            } catch (\Throwable $e) {
+                echo "FfmpegNatsChannel: unhandled exception: {$e->getMessage()}\n";
+                throw $e;
+            }
+        };
     }
 
     /**

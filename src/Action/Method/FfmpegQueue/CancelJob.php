@@ -8,6 +8,7 @@ use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Pool\Http\PoolHttpConnection;
 use WsFramework\Trait\FfmpegJobIdValidationTrait;
@@ -60,7 +61,8 @@ class CancelJob extends MethodAbstract
         }
 
         $jobData = json_decode($entry->value, true, 512, JSON_THROW_ON_ERROR);
-        $status = $jobData['status'] ?? '';
+        $job = JobKVDTO::createFromArray($jobData);
+        $status = $job->status ?? '';
 
         $cancellable = [
             FfmpegJobStatus::PENDING->value,
@@ -68,6 +70,9 @@ class CancelJob extends MethodAbstract
             FfmpegJobStatus::S3_DOWNLOADING->value,
             FfmpegJobStatus::S3_UPLOAD_PENDING->value,
             FfmpegJobStatus::S3_UPLOADING->value,
+            FfmpegJobStatus::S3_DOWNLOAD_RESTARTED->value,
+            FfmpegJobStatus::PROCESSING_RESTARTED->value,
+            FfmpegJobStatus::S3_UPLOAD_RESTARTED->value,
         ];
         if (!in_array($status, $cancellable, true)) {
             $methodDTO->response->errors = [[
@@ -96,7 +101,7 @@ class CancelJob extends MethodAbstract
 
     protected static function getDescription(): string
     {
-        return 'Отменить задачу со статусом pending или на стадии S3 (download/upload pending, downloading, uploading).';
+        return 'Отменить задачу со статусом pending, на стадии S3 или со статусом restarted.';
     }
 
     protected static function getSchemaArgsDescriptor(): array

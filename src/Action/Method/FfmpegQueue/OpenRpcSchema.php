@@ -28,49 +28,152 @@ final class OpenRpcSchema
     {
         return [
             'type' => 'object',
-            'required' => ['jobId', 'status'],
+            'required' => ['jobId'],
             'additionalProperties' => false,
             'properties' => [
                 'jobId' => [
                     'type' => 'string',
                     'description' => 'Уникальный идентификатор задачи.',
                 ],
-                'status' => static::statusSchema('Текущий статус задачи в очереди.'),
-                'inputFile' => [
+                'status' => static::statusSchema('Текущий статус задачи в пайплайне.'),
+                's3Key' => [
                     'type' => 'string',
-                    'description' => 'Относительный или абсолютный путь к исходному видео.',
+                    'description' => 'Ключ исходного файла в S3-бакете.',
                 ],
-                'outputFile' => [
+                's3Bucket' => [
                     'type' => 'string',
-                    'description' => 'Имя/путь результата, сохранённый в метаданных задачи.',
+                    'description' => 'Имя S3-бакета.',
                 ],
-                'options' => static::ffmpegOptionsSchema(),
+                'outputS3Prefix' => [
+                    'type' => 'string',
+                    'description' => 'Префикс для выходных HLS-файлов в S3.',
+                ],
+                'retryCount' => [
+                    'type' => 'integer',
+                    'description' => 'Текущее количество выполненных повторных попыток.',
+                ],
+                'maxRetries' => [
+                    'type' => 'integer',
+                    'description' => 'Максимальное количество повторных попыток.',
+                ],
                 'priority' => [
                     'type' => 'integer',
-                    'description' => 'Приоритет задачи, сохранённый в метаданных очереди.',
+                    'description' => 'Приоритет задачи в очереди.',
                 ],
                 'createdAt' => static::dateTimeSchema('Время постановки задачи в очередь.'),
                 'updatedAt' => static::dateTimeSchema('Время последнего обновления состояния задачи.'),
                 'startedAt' => static::dateTimeSchema('Время начала обработки задачи worker-процессом.'),
                 'finishedAt' => static::dateTimeSchema('Время завершения обработки задачи.'),
-                'error' => [
-                    'type' => 'string',
-                    'description' => 'Короткое сообщение об ошибке.',
-                ],
-                'errorMessage' => [
-                    'type' => 'string',
-                    'description' => 'Текст ошибки в человекочитаемом виде.',
-                ],
+                'errors' => static::errorsSchema('Массив ошибок верхнего уровня задачи.'),
+                's3Download' => static::s3DownloadSchema(),
+                'ffmpegJob' => static::ffmpegSubJobSchema(),
+                's3Upload' => static::s3UploadSchema(),
+                'cleanup' => static::cleanupSchema(),
             ],
         ];
     }
 
-    public static function ffmpegOptionsSchema(): array
+    public static function s3DownloadSchema(): array
     {
         return [
             'type' => 'object',
-            'description' => 'Произвольные параметры FFmpeg, сохраняемые в payload/метаданных задачи.',
-            'additionalProperties' => true,
+            'description' => 'Данные стадии S3 Download.',
+            'additionalProperties' => false,
+            'properties' => [
+                'inputFile' => [
+                    'type' => 'string',
+                    'description' => 'Локальный путь к скачанному файлу.',
+                ],
+                'errors' => static::errorsSchema('Ошибки стадии S3 Download.'),
+            ],
+        ];
+    }
+
+    public static function ffmpegSubJobSchema(): array
+    {
+        return [
+            'type' => 'object',
+            'description' => 'Данные стадии FFmpeg-конвертации.',
+            'additionalProperties' => false,
+            'properties' => [
+                'outputFile' => [
+                    'type' => 'string',
+                    'description' => 'Имя/путь результата конвертации.',
+                ],
+                'localHlsDir' => [
+                    'type' => 'string',
+                    'description' => 'Локальная директория с HLS-сегментами.',
+                ],
+                'playlistFile' => [
+                    'type' => 'string',
+                    'description' => 'Путь к master playlist (.m3u8).',
+                ],
+                'segmentCount' => [
+                    'type' => 'integer',
+                    'description' => 'Количество HLS-сегментов.',
+                ],
+                'options' => [
+                    'type' => 'object',
+                    'description' => 'Произвольные параметры FFmpeg.',
+                    'additionalProperties' => true,
+                ],
+                'progress' => [
+                    'type' => 'integer',
+                    'description' => 'Прогресс конвертации (0–100).',
+                ],
+                'errors' => static::errorsSchema('Ошибки стадии FFmpeg-конвертации.'),
+            ],
+        ];
+    }
+
+    public static function s3UploadSchema(): array
+    {
+        return [
+            'type' => 'object',
+            'description' => 'Данные стадии S3 Upload.',
+            'additionalProperties' => false,
+            'properties' => [
+                'playlistS3Key' => [
+                    'type' => 'string',
+                    'description' => 'S3-ключ загруженного master playlist.',
+                ],
+                'errors' => static::errorsSchema('Ошибки стадии S3 Upload.'),
+            ],
+        ];
+    }
+
+    public static function cleanupSchema(): array
+    {
+        return [
+            'type' => 'object',
+            'description' => 'Данные стадии очистки временных файлов.',
+            'additionalProperties' => false,
+            'properties' => [
+                'errors' => static::errorsSchema('Ошибки стадии очистки.'),
+            ],
+        ];
+    }
+
+    public static function errorsSchema(?string $description = null): array
+    {
+        return [
+            'type' => 'array',
+            'description' => $description,
+            'items' => [
+                'type' => 'object',
+                'additionalProperties' => true,
+                'properties' => [
+                    'message' => [
+                        'type' => 'string',
+                        'description' => 'Текст ошибки.',
+                    ],
+                    'at' => [
+                        'type' => 'string',
+                        'format' => 'date-time',
+                        'description' => 'Время возникновения ошибки.',
+                    ],
+                ],
+            ],
         ];
     }
 

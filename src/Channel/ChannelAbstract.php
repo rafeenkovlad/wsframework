@@ -104,7 +104,7 @@ abstract class ChannelAbstract implements SelectEventInterface
     public function on(callable $callback, string $method): void
     {
         static::connect();
-        Client::on($method, $callback);
+        Client::on($method, $this->onException($callback));
     }
 
     /**
@@ -116,10 +116,13 @@ abstract class ChannelAbstract implements SelectEventInterface
     public function once(callable $callback, string $method): void
     {
         static::connect();
-        Client::on($method, function () use ($callback, $method) {
-            Client::unsubscribe($method);
-            $callback(...func_get_args());
-        });
+        Client::on(
+            $method,
+            $this->onException(function () use ($callback, $method) {
+                Client::unsubscribe($method);
+                $callback(...func_get_args());
+            })
+        );
     }
 
     /**
@@ -161,6 +164,18 @@ abstract class ChannelAbstract implements SelectEventInterface
     public static function unsubscribe(string|array $method): void
     {
         Client::unsubscribe($method);
+    }
+
+    /**
+     * @param callable $callback
+     * @return callable
+     */
+    public function onException(callable $callback): callable
+    {
+        return function (mixed ...$args) use ($callback)
+        {
+            $callback(...$args);
+        };
     }
 
 }

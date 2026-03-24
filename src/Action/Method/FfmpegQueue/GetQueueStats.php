@@ -7,9 +7,8 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsDlqChannel;
-use WsFramework\Channel\S3NatsChannel\S3NatsDlqChannel;
-use WsFramework\Dto\FfmpegJobDTO;
+use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
+use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Pool\Http\PoolHttpConnection;
@@ -47,27 +46,27 @@ class GetQueueStats extends MethodAbstract
 
     protected static function process(int $workerId, int $connectionId, MethodDTO $methodDTO): array
     {
-        /** @var FfmpegNatsChannel $channel */
-        $channel = FfmpegNatsChannel::eventInterface();
-        $kv = $channel->bucket('ffmpeg_jobs_status');
+        /** @var FfmpegNatsChannel $ffmpegChannel */
+        $ffmpegChannel = FfmpegNatsChannel::eventInterface();
 
-        // Подсчёт по статусам из KV
-        $byStatus = [
-            FfmpegJobStatus::S3_DOWNLOAD_PENDING->value => 0,
-            FfmpegJobStatus::S3_DOWNLOADING->value => 0,
-            FfmpegJobStatus::S3_DOWNLOAD_FAILED->value => 0,
-            FfmpegJobStatus::PENDING->value => 0,
-            FfmpegJobStatus::PROCESSING->value => 0,
-            FfmpegJobStatus::COMPLETED->value => 0,
-            FfmpegJobStatus::FAILED->value => 0,
-            FfmpegJobStatus::CANCELLED->value => 0,
-            FfmpegJobStatus::S3_UPLOAD_PENDING->value => 0,
-            FfmpegJobStatus::S3_UPLOADING->value => 0,
-            FfmpegJobStatus::S3_UPLOAD_FAILED->value => 0,
-        ];
+        /** @var S3NatsChannel $s3Channel */
+        $s3Channel = S3NatsChannel::eventInterface();
+
+        $kv = $ffmpegChannel->bucket('ffmpeg_jobs_status');
+
+        // Count by status from KV
+        $byStatus = [];
+        foreach (FfmpegJobStatus::cases() as $case) {
+            $byStatus[$case->value] = 0;
+        }
+
         $entries = $kv->getAll();
         foreach ($entries as $entry) {
-            $job = FfmpegJobDTO::createFromArray(json_decode($entry->value, true, 512, JSON_THROW_ON_ERROR));
+            $data = json_decode($entry->value, true);
+            if (!is_array($data) || empty($data['jobId'])) {
+                continue;
+            }
+            $job = JobKVDTO::createFromArray($data);
             $status = $job->status;
             if ($status !== null && isset($byStatus[$status])) {
                 $byStatus[$status]++;
@@ -76,56 +75,36 @@ class GetQueueStats extends MethodAbstract
 
         $totalJobs = array_sum($byStatus);
 
-        // Stream info
-        $streamInfo = ['messages' => 0, 'bytes' => 0, 'firstSeq' => 0, 'lastSeq' => 0];
-        try {
-            $info = $channel->getStreamInfo('ffmpeg_jobs');
-            $state = $info->state ?? $info;
-            $streamInfo = [
-                'messages' => $state->messages ?? 0,
-                'bytes' => $state->bytes ?? 0,
-                'firstSeq' => $state->first_seq ?? 0,
-                'lastSeq' => $state->last_seq ?? 0,
-            ];
-        } catch (\Throwable $e) {
-            echo "GetQueueStats: stream info error: {$e->getMessage()}\n";
-        }
+        // Per-stage stream info
+        $streamDefault = ['messages' => 0, 'bytes' => 0, 'firstSeq' => 0, 'lastSeq' => 0];
+        $streams = [];
 
-        // DLQ stream info — per-stage
-        $dlqInfo = [
-            'ffmpeg'     => ['messages' => 0],
-            's3Download' => ['messages' => 0],
-            's3Upload'   => ['messages' => 0],
+        $streamMap = [
+            's3Download' => ['channel' => $s3Channel, 'stream' => 's3_download'],
+            'ffmpegJobs' => ['channel' => $ffmpegChannel, 'stream' => 'ffmpeg_jobs'],
+            's3Upload'   => ['channel' => $s3Channel, 'stream' => 's3_upload'],
         ];
 
-        /** @var FfmpegNatsDlqChannel $ffmpegDlqChannel */
-        $ffmpegDlqChannel = FfmpegNatsDlqChannel::eventInterface();
-
-        /** @var S3NatsDlqChannel $s3DlqChannel */
-        $s3DlqChannel = S3NatsDlqChannel::eventInterface();
-
-        $dlqStreams = [
-            'ffmpeg'     => ['channel' => $ffmpegDlqChannel, 'stream' => 'ffmpeg_jobs_dlq'],
-            's3Download' => ['channel' => $s3DlqChannel,     'stream' => 's3_download_dlq'],
-            's3Upload'   => ['channel' => $s3DlqChannel,     'stream' => 's3_upload_dlq'],
-        ];
-
-        foreach ($dlqStreams as $key => ['channel' => $source, 'stream' => $streamName]) {
+        foreach ($streamMap as $key => ['channel' => $channel, 'stream' => $streamName]) {
             try {
-                $info = $source->getStreamInfo($streamName);
+                $info = $channel->getStreamInfo($streamName);
                 $state = $info->state ?? $info;
-                $dlqInfo[$key] = [
+                $streams[$key] = [
                     'messages' => $state->messages ?? 0,
+                    'bytes' => $state->bytes ?? 0,
+                    'firstSeq' => $state->first_seq ?? 0,
+                    'lastSeq' => $state->last_seq ?? 0,
                 ];
             } catch (\Throwable $e) {
-                echo "GetQueueStats: DLQ info error ({$streamName}): {$e->getMessage()}\n";
+                echo "GetQueueStats: stream info error ({$streamName}): {$e->getMessage()}\n";
+                $streams[$key] = $streamDefault;
             }
         }
 
         // Consumer info
         $consumerInfo = ['pending' => 0, 'ackFloor' => 0];
         try {
-            $info = $channel->getConsumerInfo('ffmpeg_jobs', 'ffmpeg_queue_add_job');
+            $info = $ffmpegChannel->getConsumerInfo('ffmpeg_jobs', 'ffmpeg_queue_add_job');
             $consumerInfo = [
                 'pending' => $info->num_pending ?? 0,
                 'ackFloor' => $info->num_ack_floor ?? $info->ack_floor->stream_seq ?? 0,
@@ -141,8 +120,7 @@ class GetQueueStats extends MethodAbstract
         return [
             'totalJobs' => $totalJobs,
             'byStatus' => $byStatus,
-            'stream' => $streamInfo,
-            'dlq' => $dlqInfo,
+            'streams' => $streams,
             'consumer' => $consumerInfo,
             'workers' => [
                 'configured' => $configured,
@@ -154,7 +132,7 @@ class GetQueueStats extends MethodAbstract
 
     protected static function getDescription(): string
     {
-        return 'Получить агрегированную статистику: KV по статусам, JetStream stream, DLQ per-stage (ffmpeg/s3Download/s3Upload), consumer и worker-процессы.';
+        return 'Получить агрегированную статистику: KV по статусам, JetStream streams per-stage, consumer и worker-процессы.';
     }
 
     protected static function getSchemaArgsDescriptor(): array
@@ -164,9 +142,28 @@ class GetQueueStats extends MethodAbstract
 
     protected static function getResult(): ?array
     {
+        $streamSchema = [
+            'type' => 'object',
+            'additionalProperties' => false,
+            'required' => ['messages', 'bytes', 'firstSeq', 'lastSeq'],
+            'properties' => [
+                'messages' => ['type' => 'integer'],
+                'bytes' => ['type' => 'integer'],
+                'firstSeq' => ['type' => 'integer'],
+                'lastSeq' => ['type' => 'integer'],
+            ],
+        ];
+
+        $statusProps = [];
+        $statusRequired = [];
+        foreach (FfmpegJobStatus::cases() as $case) {
+            $statusProps[$case->value] = ['type' => 'integer'];
+            $statusRequired[] = $case->value;
+        }
+
         return [
             'type' => 'object',
-            'required' => ['totalJobs', 'byStatus', 'stream', 'dlq', 'consumer', 'workers'],
+            'required' => ['totalJobs', 'byStatus', 'streams', 'consumer', 'workers'],
             'additionalProperties' => false,
             'properties' => [
                 'totalJobs' => [
@@ -176,67 +173,18 @@ class GetQueueStats extends MethodAbstract
                 'byStatus' => [
                     'type' => 'object',
                     'additionalProperties' => false,
-                    'required' => [
-                        's3_download_pending', 's3_downloading', 's3_download_failed',
-                        'pending', 'processing', 'completed', 'failed', 'cancelled',
-                        's3_upload_pending', 's3_uploading', 's3_upload_failed',
-                    ],
-                    'properties' => [
-                        's3_download_pending' => ['type' => 'integer'],
-                        's3_downloading' => ['type' => 'integer'],
-                        's3_download_failed' => ['type' => 'integer'],
-                        'pending' => ['type' => 'integer'],
-                        'processing' => ['type' => 'integer'],
-                        'completed' => ['type' => 'integer'],
-                        'failed' => ['type' => 'integer'],
-                        'cancelled' => ['type' => 'integer'],
-                        's3_upload_pending' => ['type' => 'integer'],
-                        's3_uploading' => ['type' => 'integer'],
-                        's3_upload_failed' => ['type' => 'integer'],
-                    ],
+                    'required' => $statusRequired,
+                    'properties' => $statusProps,
                 ],
-                'stream' => [
+                'streams' => [
                     'type' => 'object',
                     'additionalProperties' => false,
-                    'required' => ['messages', 'bytes', 'firstSeq', 'lastSeq'],
-                    'description' => 'Состояние основного JetStream stream очереди.',
+                    'required' => ['s3Download', 'ffmpegJobs', 's3Upload'],
+                    'description' => 'Состояние JetStream streams по стадиям.',
                     'properties' => [
-                        'messages' => ['type' => 'integer'],
-                        'bytes' => ['type' => 'integer'],
-                        'firstSeq' => ['type' => 'integer'],
-                        'lastSeq' => ['type' => 'integer'],
-                    ],
-                ],
-                'dlq' => [
-                    'type' => 'object',
-                    'additionalProperties' => false,
-                    'required' => ['ffmpeg', 's3Download', 's3Upload'],
-                    'description' => 'Состояние DLQ streams по стадиям.',
-                    'properties' => [
-                        'ffmpeg' => [
-                            'type' => 'object',
-                            'additionalProperties' => false,
-                            'required' => ['messages'],
-                            'properties' => [
-                                'messages' => ['type' => 'integer'],
-                            ],
-                        ],
-                        's3Download' => [
-                            'type' => 'object',
-                            'additionalProperties' => false,
-                            'required' => ['messages'],
-                            'properties' => [
-                                'messages' => ['type' => 'integer'],
-                            ],
-                        ],
-                        's3Upload' => [
-                            'type' => 'object',
-                            'additionalProperties' => false,
-                            'required' => ['messages'],
-                            'properties' => [
-                                'messages' => ['type' => 'integer'],
-                            ],
-                        ],
+                        's3Download' => $streamSchema,
+                        'ffmpegJobs' => $streamSchema,
+                        's3Upload'   => $streamSchema,
                     ],
                 ],
                 'consumer' => [

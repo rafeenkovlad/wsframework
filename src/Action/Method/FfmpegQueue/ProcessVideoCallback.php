@@ -9,9 +9,13 @@ use WsFramework\Action\Response\Ok;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\ProcessVideoCallbackParamsDTO;
+use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Middleware\MethodParamsToDTO;
 use WsFramework\Pool\Http\PoolHttpConnection;
+use WsFramework\UseCase\DispatchJobByStatusUseCase;
+use WsFramework\UseCase\JobKVMergeUseCase;
+use Package\NatsClient\NatsKeyValueInterface;
 use Symfony\Component\Validator\Validation;
 
 class ProcessVideoCallback extends MethodAbstract
@@ -66,16 +70,12 @@ class ProcessVideoCallback extends MethodAbstract
 
         try {
             static::setKVJobStatus($jobId, FfmpegJobStatus::S3_DOWNLOAD_PENDING, $params);
-            S3NatsChannel::eventInterface()->publish(
-                json_encode([
-                    'jobId' => $jobId,
-                    's3Key' => $params->s3Key,
-                    's3Bucket' => $params->s3Bucket,
-                    'outputS3Prefix' => $params->outputS3Prefix,
-                    'maxRetries' => $params->maxRetries,
-                ], JSON_THROW_ON_ERROR),
-                S3NatsChannel::METHOD_DOWNLOAD,
-            );
+            /** @var NatsKeyValueInterface $kv */
+            $kv = S3NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
+            DispatchJobByStatusUseCase::handle($jobId, $kv);
+
+            $status = FfmpegJobStatus::S3_DOWNLOAD_PENDING->value;
+
         } catch (\Throwable $e) {
 
             static::setKVJobStatus(
@@ -85,10 +85,10 @@ class ProcessVideoCallback extends MethodAbstract
                 $e->getMessage()
             );
 
-            return ['jobId' => $jobId, 'status' => FfmpegJobStatus::S3_DOWNLOAD_FAILED->value];
+            $status = FfmpegJobStatus::S3_DOWNLOAD_FAILED->value;
         }
 
-        return ['jobId' => $jobId, 'status' => FfmpegJobStatus::S3_DOWNLOAD_PENDING->value];
+        return ['jobId' => $jobId, 'status' => $status];
     }
 
     /**
@@ -108,18 +108,17 @@ class ProcessVideoCallback extends MethodAbstract
     {
         $kv = S3NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
         $timestamp = date('c');
-        $kv->put($jobId, json_encode([
-            'jobId' => $jobId,
-            'status' => $status->value,
-            's3Key' => $params->s3Key,
-            's3Bucket' => $params->s3Bucket,
-            'outputS3Prefix' => $params->outputS3Prefix,
-            'maxRetries' => $params->maxRetries,
-            'retryCount' => 0,
-            'createdAt' => $timestamp,
-            'updatedAt' => $timestamp,
-            'lastError' => $error,
-        ], JSON_THROW_ON_ERROR));
+        JobKVMergeUseCase::handle(new JobKVDTO(
+            jobId: $jobId,
+            status: $status->value,
+            s3Key: $params->s3Key,
+            s3Bucket: $params->s3Bucket,
+            outputS3Prefix: $params->outputS3Prefix,
+            retryCount: 0,
+            maxRetries: $params->maxRetries,
+            createdAt: $timestamp,
+            errors: $error !== null ? [['message' => $error, 'at' => $timestamp]] : null,
+        ), $kv);
     }
 
     protected static function getDescription(): string

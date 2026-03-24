@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Package\NatsClient;
 
+use JsonException;
 use WsFramework\Pool\Nats\PoolConsumer;
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
@@ -72,22 +73,30 @@ class NatsClient
     }
 
     /**
-     * @param callable $fn
-     * @return mixed
+     * @template T
+     * @param callable(): T $fn
+     * @param int $maxAttempts
+     * @return T
      */
-    private function retryConnection(callable $fn): mixed
+    private function retryConnection(callable $fn, int $maxAttempts = 5): mixed
     {
-        for ($i = 0; $i < 5; ++$i) {
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; ++$attempt) {
             try {
                 return $fn();
-            } catch (\LogicException $e) {
-                echo "Nats connection failed, attempts: $i \n". $e->getMessage();
+            } catch (\Throwable $e) {
+                $lastException = $e;
+                echo "Nats connection failed, attempt: {$attempt}/{$maxAttempts} — {$e->getMessage()}\n";
+
+                if ($attempt < $maxAttempts) {
+                    $delay = min($attempt * $attempt, 10);
+                    sleep($delay);
+                }
             }
         }
 
-        echo "Nats connection failed, max attempts";
-
-        throw $e;
+        throw $lastException;
     }
 
     /**
@@ -165,7 +174,12 @@ class NatsClient
             try {
                 call_user_func($callback, $msg);
                 $msg->ack();
-            } catch (\Throwable $e) {
+            } catch (JsonException $e) {
+                echo "NATS handler json error: {$e->getMessage()}\n";
+                echo "NATS message render:  {$msg->render()}\n";
+                $msg->ack();
+            }
+            catch (\Throwable $e) {
                 echo "NATS handler error: {$e->getMessage()}\n";
                 echo "NATS message render:  {$msg->render()}\n";
                 $msg->nack((float)($_ENV['NATS_DELAY_NACK_IN_LOOP'] ?? 5000000));

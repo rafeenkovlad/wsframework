@@ -8,9 +8,11 @@ use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Pool\Http\PoolHttpConnection;
 use WsFramework\Trait\FfmpegJobIdValidationTrait;
+use WsFramework\UseCase\CleanupJobDirectoryUseCase;
 
 class DeleteJob extends MethodAbstract
 {
@@ -59,8 +61,8 @@ class DeleteJob extends MethodAbstract
             return [];
         }
 
-        $jobData = json_decode($existing, true, 512, JSON_THROW_ON_ERROR);
-        $status = $jobData['status'] ?? '';
+        $jobData = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
+        $status = $jobData->status ?? '';
 
         $terminal = [
             FfmpegJobStatus::COMPLETED->value,
@@ -77,6 +79,7 @@ class DeleteJob extends MethodAbstract
             return [];
         }
 
+        CleanupJobDirectoryUseCase::handle($jobData);
         $kv->delete($jobId);
 
         return ['jobId' => $jobId, 'deleted' => true];
@@ -84,7 +87,7 @@ class DeleteJob extends MethodAbstract
 
     protected static function getDescription(): string
     {
-        return 'Удалить терминальную задачу из KV-хранилища очереди.';
+        return 'Удалить терминальную задачу из KV-хранилища очереди и очистить временные файлы.';
     }
 
     protected static function getSchemaArgsDescriptor(): array

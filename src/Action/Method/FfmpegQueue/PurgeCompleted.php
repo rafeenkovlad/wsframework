@@ -8,8 +8,10 @@ use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Pool\Http\PoolHttpConnection;
+use WsFramework\UseCase\CleanupJobDirectoryUseCase;
 
 class PurgeCompleted extends MethodAbstract
 {
@@ -49,14 +51,18 @@ class PurgeCompleted extends MethodAbstract
 
         $purged = 0;
         foreach ($entries as $entry) {
-            $job = json_decode($entry->value, true, 512, JSON_THROW_ON_ERROR);
-            if (!is_array($job)) {
+            $data = json_decode($entry->value, true);
+            if (!is_array($data) || empty($data['jobId'])) {
                 continue;
             }
-            if (($job['status'] ?? '') === FfmpegJobStatus::COMPLETED->value) {
-                $kv->delete($entry->key);
-                $purged++;
+            $job = JobKVDTO::createFromArray($data);
+            if ($job->status !== FfmpegJobStatus::COMPLETED->value) {
+                continue;
             }
+
+            CleanupJobDirectoryUseCase::handle($job);
+            $kv->delete($entry->key);
+            $purged++;
         }
 
         return ['purged' => $purged];
@@ -64,7 +70,7 @@ class PurgeCompleted extends MethodAbstract
 
     protected static function getDescription(): string
     {
-        return 'Удалить из KV-хранилища все задачи со статусом completed.';
+        return 'Удалить из KV-хранилища все задачи со статусом completed и очистить временные файлы.';
     }
 
     protected static function getSchemaArgsDescriptor(): array

@@ -17,6 +17,9 @@ services:
     command: -c /etc/nats/nats-server.conf
     volumes:
       - nats_storage:/nats/storage
+    ports:
+      - '4222:4222'
+      - '8222:8222'
     networks:
       srv-queue:
 
