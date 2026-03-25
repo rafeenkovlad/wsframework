@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace WsFramework\Service\NatsJetstreamService;
 
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Service\ServiceAbstract;
@@ -26,6 +27,7 @@ class NatsJetstreamService extends ServiceAbstract
             // Initialize NATS connection in this worker process
             FfmpegNatsChannel::main();
             S3NatsChannel::main();
+            KVNatsBucket::main();
 
             echo "NatsJetstreamService started on worker {$worker->id}\n";
         };

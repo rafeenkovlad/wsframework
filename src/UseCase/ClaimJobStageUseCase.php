@@ -7,10 +7,17 @@ namespace WsFramework\UseCase;
 use JsonException;
 use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Dto\UseCase\JobKVDTO;
+use WsFramework\Enum\ClaimResult;
 use WsFramework\Exception\UseCaseException;
 
 /**
- * compare-and-swap: гарантирует что ровно один воркер захватит задачу, даже если NATS доставил сообщение нескольким consumer-ам
+ * CAS-захват стадии джобы.
+ *
+ * Читает текущую revision из KV, проверяет что статус входит в allowedStatuses,
+ * и атомарно переводит в activeStatus через kv->update(revision).
+ * Если между чтением и записью другой воркер успел обновить запись —
+ * revision не совпадёт, update бросит исключение → CONFLICT.
+ * Гарантирует, что ровно один воркер захватит стадию.
  */
 class ClaimJobStageUseCase
 {
@@ -19,7 +26,7 @@ class ClaimJobStageUseCase
      * @param NatsKeyValueInterface $kv
      * @param string[] $allowedStatuses
      * @param string $activeStatus
-     * @return bool
+     * @return ClaimResult
      * @throws UseCaseException|JsonException
      */
     public static function handle(
@@ -27,31 +34,32 @@ class ClaimJobStageUseCase
         NatsKeyValueInterface $kv,
         array $allowedStatuses,
         string $activeStatus,
-    ): bool {
+    ): ClaimResult {
         $entry = $kv->getEntry($dto->jobId);
         if ($entry === null) {
             throw new UseCaseException("Job not found: {$dto->jobId}");
         }
 
-        $jobData = JobKVDTO::createFromArray(
-            json_decode($entry->value, true, 512, JSON_THROW_ON_ERROR)
-        ) ?? JobKVDTO::createWithDefaultValues();
-        $currentStatus = $jobData->status;
+        $current = json_decode($entry->value, true, 512, JSON_THROW_ON_ERROR);
+        $jobData = JobKVDTO::createFromArray($current) ?? JobKVDTO::createWithDefaultValues();
 
-        if (!in_array($currentStatus, $allowedStatuses, true)) {
-            return false;
+        if (!in_array($jobData->status, $allowedStatuses, true)) {
+            return ClaimResult::STATUS_MISMATCH;
         }
+
+        $current['status'] = $activeStatus;
+        $current['updatedAt'] = date('c');
 
         try {
             $kv->update(
                 $dto->jobId,
-                json_encode(['status' => $activeStatus, 'updatedAt' => date('c')], JSON_THROW_ON_ERROR),
+                json_encode($current, JSON_THROW_ON_ERROR),
                 $entry->revision,
             );
         } catch (\Throwable) {
-            return false;
+            return ClaimResult::CONFLICT;
         }
 
-        return true;
+        return ClaimResult::CLAIMED;
     }
 }

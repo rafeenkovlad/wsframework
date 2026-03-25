@@ -142,7 +142,7 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Перезапустить задачу со статусом failed, cancelled или зависшую на стадии S3.\n\nДопустимые статусы: failed, cancelled, s3_download_failed, s3_upload_failed, s3_downloading (stuck), s3_uploading (stuck).\n\nПри перезапуске определяется стадия и задача отправляется в соответствующий поток (S3 Download / S3 Upload / FFmpeg)."
+						"description": "Перезапустить задачу со статусом failed, cancelled или зависшую на стадии S3/FFmpeg.\n\nДопустимые статусы: failed, cancelled, processing (stuck), s3_download_failed, s3_upload_failed, s3_downloading (stuck), s3_uploading (stuck).\n\nПри перезапуске определяется стадия и задача отправляется в соответствующий поток (S3 Download / S3 Upload / FFmpeg)."
 					},
 					"response": [
 						{
@@ -196,6 +196,32 @@
 							"code": 200,
 							"_postman_previewlanguage": "json",
 							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\"restarted\": true,\n\t\t\"status\": \"s3_download_pending\"\n\t}\n}"
+						},
+						{
+							"name": "Success — job restarted (s3 upload)",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.restartJob\",\n\t\"params\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\"restarted\": true,\n\t\t\"status\": \"s3_upload_pending\"\n\t}\n}"
 						}
 					]
 				},
@@ -300,12 +326,63 @@
 							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"purged\": 5\n\t}\n}"
 						}
 					]
+				},
+				{
+					"name": "purgeAll",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.purgeAll\",\n\t\"params\": {}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Удалить из KV-хранилища все задачи и очистить временные файлы."
+					},
+					"response": [
+						{
+							"name": "Success — purged all jobs",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.purgeAll\",\n\t\"params\": {}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"purged\": 42\n\t}\n}"
+						}
+					]
 				}
 			]
 		},
 		{
 			"name": "Monitoring",
-			"description": "Мониторинг задач, статистика, DLQ.",
+			"description": "Мониторинг задач и статистика очередей.",
 			"item": [
 				{
 					"name": "getJobStatus",
@@ -404,7 +481,7 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Получить список задач FFmpeg-очереди с фильтрацией по статусу и пагинацией.\n\nПараметры:\n- status — опциональный фильтр (enum: s3_download_pending, s3_downloading, s3_download_failed, pending, processing, completed, failed, cancelled, s3_upload_pending, s3_uploading, s3_upload_failed)\n- limit — макс. количество (1–200, по умолчанию 20)\n- offset — смещение (по умолчанию 0)\n- sortOrder — asc/desc по createdAt"
+						"description": "Получить список задач FFmpeg-очереди с фильтрацией по статусу и пагинацией.\n\nПараметры:\n- status — опциональный фильтр по любому статусу из OpenRPC enum\n- limit — макс. количество (1–200, по умолчанию 50)\n- offset — смещение (по умолчанию 0)\n- sortOrder — asc/desc по createdAt"
 					},
 					"response": [
 						{
@@ -479,7 +556,7 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Получить агрегированную статистику очереди:\n- totalJobs — общее количество задач в KV\n- byStatus — счётчики по каждому статусу\n- stream — состояние JetStream (messages, bytes, firstSeq, lastSeq)\n- dlq — DLQ per-stage (ffmpeg, s3Download, s3Upload)\n- consumer — durable consumer info (pending, ackFloor)\n- workers — configured / busy / idle"
+						"description": "Получить агрегированную статистику сервиса:\n- totalJobs — общее количество задач в KV\n- byStatus — счётчики по каждому статусу из enum\n- streams — JetStream streams по стадиям s3Download / ffmpegJobs / s3Upload\n- consumer — состояние durable consumer FFmpeg worker-процесса\n- workers — configured / busy / idle"
 					},
 					"response": [
 						{
@@ -506,12 +583,12 @@
 							"status": "OK",
 							"code": 200,
 							"_postman_previewlanguage": "json",
-							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"totalJobs\": 42,\n\t\t\"byStatus\": {\n\t\t\t\"s3_download_pending\": 2,\n\t\t\t\"s3_downloading\": 1,\n\t\t\t\"s3_download_failed\": 0,\n\t\t\t\"pending\": 5,\n\t\t\t\"processing\": 3,\n\t\t\t\"completed\": 25,\n\t\t\t\"failed\": 2,\n\t\t\t\"cancelled\": 1,\n\t\t\t\"s3_upload_pending\": 1,\n\t\t\t\"s3_uploading\": 2,\n\t\t\t\"s3_upload_failed\": 0\n\t\t},\n\t\t\"stream\": {\n\t\t\t\"messages\": 150,\n\t\t\t\"bytes\": 48200,\n\t\t\t\"firstSeq\": 1,\n\t\t\t\"lastSeq\": 150\n\t\t},\n\t\t\"dlq\": {\n\t\t\t\"ffmpeg\": { \"messages\": 2 },\n\t\t\t\"s3Download\": { \"messages\": 0 },\n\t\t\t\"s3Upload\": { \"messages\": 0 }\n\t\t},\n\t\t\"consumer\": {\n\t\t\t\"pending\": 5,\n\t\t\t\"ackFloor\": 140\n\t\t},\n\t\t\"workers\": {\n\t\t\t\"configured\": 4,\n\t\t\t\"busy\": 3,\n\t\t\t\"idle\": 1\n\t\t}\n\t}\n}"
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"totalJobs\": 42,\n\t\t\"byStatus\": {\n\t\t\t\"s3_download_pending\": 2,\n\t\t\t\"s3_downloading\": 1,\n\t\t\t\"s3_download_failed\": 0,\n\t\t\t\"pending\": 5,\n\t\t\t\"processing\": 3,\n\t\t\t\"completed\": 25,\n\t\t\t\"failed\": 2,\n\t\t\t\"cancelled\": 1,\n\t\t\t\"s3_upload_pending\": 1,\n\t\t\t\"s3_uploading\": 2,\n\t\t\t\"s3_upload_failed\": 0,\n\t\t\t\"s3_download_restarted\": 0,\n\t\t\t\"processing_restarted\": 1,\n\t\t\t\"s3_upload_restarted\": 0\n\t\t},\n\t\t\"streams\": {\n\t\t\t\"s3Download\": {\n\t\t\t\t\"messages\": 12,\n\t\t\t\t\"bytes\": 8192,\n\t\t\t\t\"firstSeq\": 1,\n\t\t\t\t\"lastSeq\": 12\n\t\t\t},\n\t\t\t\"ffmpegJobs\": {\n\t\t\t\t\"messages\": 8,\n\t\t\t\t\"bytes\": 6144,\n\t\t\t\t\"firstSeq\": 1,\n\t\t\t\t\"lastSeq\": 8\n\t\t\t},\n\t\t\t\"s3Upload\": {\n\t\t\t\t\"messages\": 4,\n\t\t\t\t\"bytes\": 4096,\n\t\t\t\t\"firstSeq\": 1,\n\t\t\t\t\"lastSeq\": 4\n\t\t\t}\n\t\t},\n\t\t\"consumer\": {\n\t\t\t\"pending\": 5,\n\t\t\t\"ackFloor\": 140\n\t\t},\n\t\t\"workers\": {\n\t\t\t\"configured\": 4,\n\t\t\t\"busy\": 3,\n\t\t\t\"idle\": 1\n\t\t}\n\t}\n}"
 						}
 					]
 				},
 				{
-					"name": "dlq",
+					"name": "listFailedJobs",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -522,7 +599,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.dlq\",\n\t\"params\": {\n\t\t\"limit\": 10\n\t}\n}"
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listFailedJobs\",\n\t\"params\": {\n\t\t\"limit\": 10\n\t}\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}",
@@ -530,11 +607,11 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Получить DLQ — список задач со статусами failed, s3_download_failed, s3_upload_failed.\n\nПараметры:\n- limit — макс. количество (1–200, по умолчанию 20)\n\nСортировка: по finishedAt desc (самые свежие первые)."
+						"description": "Получить список задач со статусами failed, s3_download_failed и s3_upload_failed.\n\nПараметры:\n- limit — макс. количество (1–200, по умолчанию 20)\n\nСортировка: по finishedAt desc."
 					},
 					"response": [
 						{
-							"name": "Success — DLQ list",
+							"name": "Success — failed jobs list",
 							"originalRequest": {
 								"method": "POST",
 								"header": [
@@ -545,7 +622,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.dlq\",\n\t\"params\": {\n\t\t\"limit\": 10\n\t}\n}"
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listFailedJobs\",\n\t\"params\": {\n\t\t\"limit\": 10\n\t}\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}",
@@ -587,7 +664,7 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Получить OpenRPC-документацию для метода по имени.\n\nДоступные методы:\n- ffmpegQueue.processVideoCallback\n- ffmpegQueue.getJobStatus\n- ffmpegQueue.listJobs\n- ffmpegQueue.getQueueStats\n- ffmpegQueue.cancelJob\n- ffmpegQueue.restartJob\n- ffmpegQueue.deleteJob\n- ffmpegQueue.purgeCompleted\n- ffmpegQueue.dlq"
+						"description": "Получить OpenRPC-документацию для метода по имени.\n\nДоступные методы:\n- Doc\n- ffmpegQueue.processVideoCallback\n- ffmpegQueue.getJobStatus\n- ffmpegQueue.listJobs\n- ffmpegQueue.getQueueStats\n- ffmpegQueue.cancelJob\n- ffmpegQueue.restartJob\n- ffmpegQueue.deleteJob\n- ffmpegQueue.purgeCompleted\n- ffmpegQueue.listFailedJobs\n- ffmpegQueue.purgeAll"
 					},
 					"response": []
 				},

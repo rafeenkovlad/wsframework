@@ -29,13 +29,13 @@ class JobKVMergeUseCase extends AbstractUseCase
     private const CHILD_KEYS = ['s3Download', 'ffmpegJob', 's3Upload', 'cleanup'];
 
     /**
-     * @param DataTransferObject $DTO
+     * @param JobKVDTO $DTO
      * @param ...$args
-     * @return void
+     * @return int
      * @throws UseCaseException
-     * @throws \JsonException
+     * @throws \JsonException|\Throwable
      */
-    public static function handle(DataTransferObject $DTO, ...$args): void
+    public static function handle(DataTransferObject $DTO, ...$args): int
     {
         if (empty($args)) {
             throw new UseCaseException('No kv provided');
@@ -43,10 +43,10 @@ class JobKVMergeUseCase extends AbstractUseCase
 
         /** @var NatsKeyValueInterface $kv */
         [$kv] = $args;
-        static::create($DTO)->merge($kv);
+        return static::create($DTO)->merge($kv);
     }
 
-    private function merge(?NatsKeyValueInterface $kv): void
+    private function merge(?NatsKeyValueInterface $kv): int
     {
         /** @var JobKVDTO $dto */
         $dto = $this->DTO;
@@ -85,7 +85,7 @@ class JobKVMergeUseCase extends AbstractUseCase
             }
         }
 
-        $kv->put($dto->jobId, json_encode(
+        return $kv->put($dto->jobId, json_encode(
             array_merge($current, $update),
             JSON_THROW_ON_ERROR,
         ));

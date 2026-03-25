@@ -8,10 +8,12 @@ use JsonException;
 use Workerman\Coroutine;
 use Workerman\Events\Swoole;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
 use WsFramework\Dto\StagePayloadDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Dto\UseCase\S3DownloadJobDTO;
+use WsFramework\Enum\ClaimResult;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
@@ -23,6 +25,7 @@ use WsFramework\UseCase\RecoverStuckJobsUseCase;
 use Package\NatsClient\NatsKeyValueInterface;
 use Basis\Nats\Message\Msg;
 use Workerman\Worker;
+use WsFramework\UseCase\ThrowableHandleUseCase;
 
 class S3DownloadProcess extends BackgroundProcessAbstract
 {
@@ -56,8 +59,9 @@ class S3DownloadProcess extends BackgroundProcessAbstract
             ini_set('memory_limit', '3G');
             S3NatsChannel::main();
             FfmpegNatsChannel::main();
+            KVNatsBucket::main();
 
-            //static::recoveryJob();
+            static::recoveryJob();
 
             $mainCallback = function (Msg $msg) {
                 echo "S3DownloadProcess: received message: {$msg->payload->body}\n";
@@ -65,21 +69,12 @@ class S3DownloadProcess extends BackgroundProcessAbstract
                 $dto = StagePayloadDTO::createFromArray($data);
                 $jobId = $dto->jobId;
 
-                $kv = S3NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
-                try {
-                    static::executeDownload($jobId, $kv);
-                } catch (PipelineException $e) {
-                    throw $e;
-                } catch (\Throwable $e) {
-                    static::kvMerge($kv, new JobKVDTO(
-                        jobId: $jobId,
-                        status: FfmpegJobStatus::S3_DOWNLOAD_RESTARTED->value,
-                        s3Download: new S3DownloadJobDTO(
-                            errors: [['message' => $e->getMessage(), 'at' => date('c')]],
-                        ),
-                    ));
-                    DispatchJobByStatusUseCase::handle($jobId, $kv);
-                }
+                $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
+
+                static::checkFailed($jobId, $kv);
+                static::checkClaimedStart($jobId, $kv);
+                $job = static::executeDownload($jobId, $kv);
+                DispatchJobByStatusUseCase::handle($job, $kv);
             };
 
             Coroutine::create(function () use ($mainCallback) {
@@ -98,13 +93,25 @@ class S3DownloadProcess extends BackgroundProcessAbstract
      */
     private static function recoveryJob(): void
     {
-        $kv = S3NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
-        RecoverStuckJobsUseCase::handle($kv, [FfmpegJobStatus::S3_DOWNLOADING]);
+        $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
+        RecoverStuckJobsUseCase::handle(
+            $kv,
+            [FfmpegJobStatus::S3_DOWNLOADING, FfmpegJobStatus::S3_DOWNLOAD_PENDING, FfmpegJobStatus::S3_DOWNLOAD_RESTARTED],
+        );
     }
 
-    private static function executeDownload(string $jobId, NatsKeyValueInterface $kv): void
+    /**
+     * Проверяем стартовый статус пайплайна
+     * @param string $jobId
+     * @param NatsKeyValueInterface $kv
+     * @return void
+     * @throws JsonException
+     * @throws PipelineException
+     * @throws UseCaseException
+     */
+    private static function checkClaimedStart(string $jobId, NatsKeyValueInterface $kv): void
     {
-        $claimed = ClaimJobStageUseCase::handle(
+        $result = ClaimJobStageUseCase::handle(
             new JobKVDTO(jobId: $jobId),
             $kv,
             allowedStatuses: [
@@ -114,13 +121,44 @@ class S3DownloadProcess extends BackgroundProcessAbstract
             activeStatus: FfmpegJobStatus::S3_DOWNLOADING->value,
         );
 
-        if (!$claimed) {
-            echo "S3DownloadProcess: job {$jobId} not claimable, skipping\n";
-            return;
+        if ($result !== ClaimResult::CLAIMED) {
+            $ex = new PipelineException('S3DownloadProcess', "job {$jobId} skip — {$result->name}\n");
+            echo $ex->getMessage();
+            throw $ex;
         }
+    }
+
+    /**
+     * @param string $jobId
+     * @param NatsKeyValueInterface $kv
+     * @return void
+     * @throws JsonException
+     * @throws PipelineException
+     */
+    private static function checkFailed(string $jobId, NatsKeyValueInterface $kv): void
+    {
+        $existing = $kv->get($jobId);
+        $jobKVDTO = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
+
+        if (FfmpegJobStatus::S3_DOWNLOAD_FAILED->isEq($jobKVDTO->status)) {
+            $ex = new PipelineException('S3DownloadProcess', "job {$jobId} skip — {$jobKVDTO->status}\n");
+            echo $ex->getMessage();
+            throw $ex;
+        }
+    }
+
+    /**
+     * @param string $jobId
+     * @param NatsKeyValueInterface $kv
+     * @return JobKVDTO
+     * @throws JsonException
+     * @throws \Throwable
+     */
+    private static function executeDownload(string $jobId, NatsKeyValueInterface $kv): JobKVDTO
+    {
 
         $existing = $kv->get($jobId);
-        $jobData = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
+        $jobKVDTO = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
 
         try {
             $s3Service = new S3ClientService();
@@ -131,61 +169,36 @@ class S3DownloadProcess extends BackgroundProcessAbstract
                 mkdir($localDir, 0755, true);
             }
 
-            $localFileName = basename($jobData->s3Key);
+            $localFileName = basename($jobKVDTO->s3Key);
             $localPath = $localDir . $localFileName;
 
-            $s3Service->download($jobData->s3Bucket ?? $_ENV['S3_BUCKET'], $jobData->s3Key, $localPath);
+            $s3Service->download($jobKVDTO->s3Bucket ?? $_ENV['S3_BUCKET'], $jobKVDTO->s3Key, $localPath);
 
             $fileSizeMb = round(filesize($localPath) / 1048576, 2);
             echo "S3DownloadProcess: job {$jobId} downloaded {$fileSizeMb}MB\n";
 
             $inputFile = 'tmp_jobs/' . $jobId . '/' . $localFileName;
 
-            static::kvMerge($kv, new JobKVDTO(
+            $jobKVDTO  = new JobKVDTO(
                 jobId: $jobId,
                 status: FfmpegJobStatus::PENDING->value,
                 s3Download: new S3DownloadJobDTO(
                     inputFile: $inputFile,
                 ),
-            ));
+            );
+            static::kvMerge($kv, $jobKVDTO);
 
             echo "S3DownloadProcess: job {$jobId} downloaded, ready for ffmpeg\n";
+
+            return $jobKVDTO;
         } catch (\Throwable $e) {
             echo "S3DownloadProcess: error for job {$jobId}: {$e->getMessage()}\n";
-            static::handleError($kv, $jobId, $e, $jobData->maxRetries ?? 3, $jobData->retryCount ?? 0);
+            echo "S3DownloadProcess: job {$jobId} retry {$jobKVDTO->retryCount}/{$jobKVDTO->maxRetries}\n";
+
+            ThrowableHandleUseCase::handle($jobKVDTO, $kv,$e);
+
+            return $jobKVDTO;
         }
-    }
-
-    private static function handleError(
-        NatsKeyValueInterface $kv,
-        string $jobId,
-        \Throwable $e,
-        int $maxRetries,
-        int $retryCount,
-    ): void {
-        if ($retryCount >= $maxRetries) {
-            static::kvMerge($kv, new JobKVDTO(
-                jobId: $jobId,
-                status: FfmpegJobStatus::S3_DOWNLOAD_FAILED->value,
-                finishedAt: date('c'),
-                s3Download: new S3DownloadJobDTO(
-                    errors: [['message' => $e->getMessage(), 'at' => date('c')]],
-                ),
-            ));
-
-            return;
-        }
-
-        static::kvMerge($kv, new JobKVDTO(
-            jobId: $jobId,
-            status: FfmpegJobStatus::S3_DOWNLOAD_PENDING->value,
-            retryCount: $retryCount + 1,
-            s3Download: new S3DownloadJobDTO(
-                errors: [['message' => $e->getMessage(), 'at' => date('c')]],
-            ),
-        ));
-
-        echo "S3DownloadProcess: job {$jobId} retry {$retryCount}/{$maxRetries}\n";
     }
 
     protected static function setEventLoop(): void

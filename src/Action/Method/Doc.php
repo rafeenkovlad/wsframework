@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-declare(strict_types=1);
-
 namespace WsFramework\Action\Method;
 
 use PSX\OpenAPI\Info;
@@ -18,6 +16,7 @@ use WsFramework\Action\Method\FfmpegQueue\GetJobStatus;
 use WsFramework\Action\Method\FfmpegQueue\GetQueueStats;
 use WsFramework\Action\Method\FfmpegQueue\ListJobs;
 use WsFramework\Action\Method\FfmpegQueue\ProcessVideoCallback;
+use WsFramework\Action\Method\FfmpegQueue\PurgeAll;
 use WsFramework\Action\Method\FfmpegQueue\PurgeCompleted;
 use WsFramework\Action\Method\FfmpegQueue\RestartJob;
 use WsFramework\Action\Response\Doc as DocResponse;
@@ -198,6 +197,7 @@ class Doc extends MethodAbstract
             DeleteJob::class,
             PurgeCompleted::class,
             ListFailedJobs::class,
+            PurgeAll::class,
         ];
     }
 

@@ -14,6 +14,7 @@ use WsFramework\Process\DefaultProcess\BackgroundProcessAbstract;
 use WsFramework\Pool\Http\PoolHttpConnection;
 use WsFramework\Trait\FfmpegJobIdValidationTrait;
 use WsFramework\UseCase\DispatchJobByStatusUseCase;
+use WsFramework\UseCase\JobKVMergeUseCase;
 
 class RestartJob extends MethodAbstract
 {
@@ -106,13 +107,15 @@ class RestartJob extends MethodAbstract
             $targetStatus = FfmpegJobStatus::PENDING->value;
         }
 
-        BackgroundProcessAbstract::kvMerge($kv, new JobKVDTO(
+        $jobKVDTO = new JobKVDTO(
             jobId: $jobId,
             status: $targetStatus,
             retryCount: 0,
-        ));
+        );
 
-        DispatchJobByStatusUseCase::handle($jobId, $kv);
+        JobKVMergeUseCase::handle($jobKVDTO, $kv);
+
+        DispatchJobByStatusUseCase::handle($jobKVDTO, $kv);
 
         return ['jobId' => $jobId, 'restarted' => true, 'status' => $targetStatus];
     }

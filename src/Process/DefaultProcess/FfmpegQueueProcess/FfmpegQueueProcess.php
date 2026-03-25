@@ -6,10 +6,9 @@ namespace WsFramework\Process\DefaultProcess\FfmpegQueueProcess;
 
 use JsonException;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
 use WsFramework\Dto\StagePayloadDTO;
-use WsFramework\Dto\UseCase\FfmpegJobDTO;
-use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
@@ -57,12 +56,15 @@ class FfmpegQueueProcess extends BackgroundProcessAbstract
         return function (Worker $worker) {
             FfmpegNatsChannel::main();
             S3NatsChannel::main();
+            KVNatsBucket::main();
+
+            static::recoveryJob();
 
             $filesDirectory = $_ENV['FFMPEG_FILES_DIRECTORY'] ?? '/var/www/html/public/files/';
             $executor = new FfmpegJobExecutor(
                 converter: new FfmpegVideoConverter(filesDirectory: $filesDirectory),
                 filesDirectory: $filesDirectory,
-                kv: FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status'),
+                kv: KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status'),
             );
 
             $mainCallback = function (Msg $msg) use ($executor) {
@@ -70,31 +72,12 @@ class FfmpegQueueProcess extends BackgroundProcessAbstract
                 $data = json_decode($msg->payload->body, true, 512, JSON_THROW_ON_ERROR);
                 $dto = StagePayloadDTO::createFromArray($data);
                 $jobId = $dto->jobId;
-
-                $kv = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
-                $e = null;
-                try {
-                    $executor->execute($jobId);
-                } catch (PipelineException $e) {
-                    throw $e;
-                } catch (\Throwable $e) {
-                    static::kvMerge($kv, new JobKVDTO(
-                        jobId: $jobId,
-                        status: FfmpegJobStatus::PROCESSING_RESTARTED->value,
-                        ffmpegJob: new FfmpegJobDTO(
-                            errors: [['message' => $e->getMessage(), 'at' => date('c')]],
-                        ),
-                    ));
-                } finally {
-                    if (!$e instanceof PipelineException) {
-                        DispatchJobByStatusUseCase::handle($jobId, $kv);
-                    }
-                }
+                $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
+                $job = $executor->execute($jobId);
+                DispatchJobByStatusUseCase::handle($job, $kv);
             };
 
             FfmpegNatsChannel::eventInterface()->on($mainCallback, FfmpegNatsChannel::METHOD_JOB);
-
-            static::recoveryJob();
 
             echo "FfmpegQueueProcess consumer started on worker {$worker->id}\n";
         };
@@ -108,7 +91,10 @@ class FfmpegQueueProcess extends BackgroundProcessAbstract
      */
     private static function recoveryJob(): void
     {
-        $kv = S3NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
-        RecoverStuckJobsUseCase::handle($kv, [FfmpegJobStatus::PROCESSING]);
+        $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
+        RecoverStuckJobsUseCase::handle(
+            $kv,
+            [FfmpegJobStatus::PROCESSING, FfmpegJobStatus::PROCESSING_RESTARTED, FfmpegJobStatus::PENDING],
+        );
     }
 }

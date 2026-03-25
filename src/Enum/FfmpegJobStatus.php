@@ -9,6 +9,7 @@ use WsFramework\Trait\EnumTrait;
 enum FfmpegJobStatus: string
 {
     use EnumTrait;
+
     case S3_DOWNLOAD_PENDING = 's3_download_pending';
     case S3_DOWNLOADING      = 's3_downloading';
     case S3_DOWNLOAD_FAILED  = 's3_download_failed';
@@ -23,4 +24,29 @@ enum FfmpegJobStatus: string
     case S3_DOWNLOAD_RESTARTED = 's3_download_restarted';
     case PROCESSING_RESTARTED  = 'processing_restarted';
     case S3_UPLOAD_RESTARTED   = 's3_upload_restarted';
+
+    public function pipeline(): Pipeline
+    {
+        return match ($this) {
+            self::S3_DOWNLOAD_PENDING,
+            self::S3_DOWNLOADING,
+            self::S3_DOWNLOAD_FAILED,
+            self::S3_DOWNLOAD_RESTARTED
+                => Pipeline::S3_DOWNLOAD,
+
+            self::PENDING,
+            self::PROCESSING,
+            self::COMPLETED,
+            self::FAILED,
+            self::CANCELLED,
+            self::PROCESSING_RESTARTED
+                => Pipeline::FFMPEG,
+
+            self::S3_UPLOAD_PENDING,
+            self::S3_UPLOADING,
+            self::S3_UPLOAD_FAILED,
+            self::S3_UPLOAD_RESTARTED
+                => Pipeline::S3_UPLOAD,
+        };
+    }
 }

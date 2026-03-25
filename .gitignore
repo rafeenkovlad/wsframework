@@ -19,5 +19,7 @@ tmp/
 .gemini/
 
 #files
-public/files
+public/files/*
 
+#log
+public/workerman.log

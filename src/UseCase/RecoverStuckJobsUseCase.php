@@ -32,7 +32,12 @@ class RecoverStuckJobsUseCase
         foreach ($entries as $entry) {
             $jobKVDTO = JobKVDTO::createFromArray(json_decode($entry->value, true)) ?? JobKVDTO::createWithDefaultValues();
 
-            if (!in_array($jobKVDTO->status, $statusMap)) {
+            if (!in_array(FfmpegJobStatus::fromString($jobKVDTO->status), $statusMap)) {
+                continue;
+            }
+
+            if (in_array($jobKVDTO->jobId, ['undefined', '', null])) {
+                $kv->delete($jobKVDTO->jobId);
                 continue;
             }
 
@@ -43,7 +48,7 @@ class RecoverStuckJobsUseCase
                 $kv,
             );
             DispatchJobByStatusUseCase::handle(
-                $jobKVDTO->jobId,
+                $jobKVDTO,
                 $kv,
             );
             $recovered++;
@@ -61,11 +66,14 @@ class RecoverStuckJobsUseCase
      */
     private static function match(FfmpegJobStatus $status): FfmpegJobStatus
     {
-       return match ($status) {
-           FfmpegJobStatus::S3_DOWNLOADING => FfmpegJobStatus::S3_DOWNLOAD_RESTARTED,
-           FfmpegJobStatus::S3_UPLOADING => FfmpegJobStatus::S3_UPLOAD_RESTARTED,
-           FfmpegJobStatus::PROCESSING => FfmpegJobStatus::PROCESSING_RESTARTED,
-           default => throw new PipelineException($status->getValue(), 'Recovery is not supported for this status.')
-       };
+        return match ($status) {
+            FfmpegJobStatus::S3_DOWNLOADING, FfmpegJobStatus::S3_DOWNLOAD_PENDING, FfmpegJobStatus::S3_DOWNLOAD_RESTARTED
+            => FfmpegJobStatus::S3_DOWNLOAD_RESTARTED,
+            FfmpegJobStatus::S3_UPLOADING, FfmpegJobStatus::S3_UPLOAD_PENDING, FfmpegJobStatus::S3_UPLOAD_RESTARTED
+            => FfmpegJobStatus::S3_UPLOAD_RESTARTED,
+            FfmpegJobStatus::PROCESSING, FfmpegJobStatus::PENDING, FfmpegJobStatus::PROCESSING_RESTARTED
+            => FfmpegJobStatus::PROCESSING_RESTARTED,
+            default => throw new PipelineException($status->getValue(), 'Recovery is not supported for this status.')
+        };
     }
 }

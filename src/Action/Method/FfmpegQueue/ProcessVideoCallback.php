@@ -6,6 +6,7 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\ProcessVideoCallbackParamsDTO;
@@ -69,10 +70,13 @@ class ProcessVideoCallback extends MethodAbstract
         $jobId = bin2hex(random_bytes(16));
 
         try {
-            static::setKVJobStatus($jobId, FfmpegJobStatus::S3_DOWNLOAD_PENDING, $params);
-            /** @var NatsKeyValueInterface $kv */
-            $kv = S3NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
-            DispatchJobByStatusUseCase::handle($jobId, $kv);
+            $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
+            static::setKVJobStatus($jobId, FfmpegJobStatus::S3_DOWNLOAD_PENDING, $params, $kv);
+
+            DispatchJobByStatusUseCase::handle(
+                JobKVDTO::createFromArray(['jobId' => $jobId, 'status' => FfmpegJobStatus::S3_DOWNLOAD_PENDING->value]),
+                $kv
+            );
 
             $status = FfmpegJobStatus::S3_DOWNLOAD_PENDING->value;
 
@@ -106,9 +110,9 @@ class ProcessVideoCallback extends MethodAbstract
         $error = null
     ): void
     {
-        $kv = S3NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
+        $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
         $timestamp = date('c');
-        JobKVMergeUseCase::handle(new JobKVDTO(
+        $job = new JobKVDTO(
             jobId: $jobId,
             status: $status->value,
             s3Key: $params->s3Key,
@@ -118,7 +122,9 @@ class ProcessVideoCallback extends MethodAbstract
             maxRetries: $params->maxRetries,
             createdAt: $timestamp,
             errors: $error !== null ? [['message' => $error, 'at' => $timestamp]] : null,
-        ), $kv);
+        );
+
+        JobKVMergeUseCase::handle($job, $kv);
     }
 
     protected static function getDescription(): string

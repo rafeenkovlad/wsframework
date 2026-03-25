@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Package\NatsClient;
 
 use JsonException;
+use Throwable;
+use Workerman\Timer;
 use WsFramework\Pool\Nats\PoolConsumer;
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
@@ -72,13 +74,18 @@ class NatsClient
         return $this;
     }
 
+    public static function initKV(): static
+    {
+        return new static([])->connection();
+    }
+
     /**
-     * @template T
-     * @param callable(): T $fn
+     * @param callable $fn
      * @param int $maxAttempts
-     * @return T
+     * @return mixed
+     * @throws Throwable
      */
-    private function retryConnection(callable $fn, int $maxAttempts = 5): mixed
+    private static function retryConnection(callable $fn, int $maxAttempts = 5): mixed
     {
         $lastException = null;
 
@@ -172,8 +179,12 @@ class NatsClient
             }
 
             try {
-                call_user_func($callback, $msg);
+                $msg->progress();
+                $timer = Timer::add(10, fn() => $msg->progress());
+                static::retryConnection(fn() => call_user_func($callback, $msg));
+                Timer::del($timer);
                 $msg->ack();
+                echo 'ACK!!!!!!!!!!!!!!!!!!!!!';
             } catch (JsonException $e) {
                 echo "NATS handler json error: {$e->getMessage()}\n";
                 echo "NATS message render:  {$msg->render()}\n";
@@ -198,6 +209,11 @@ class NatsClient
         $consumer->client->publish($subject, $data);
     }
 
+    /**
+     * @param string $name
+     * @return NatsKeyValueInterface
+     * @throws Throwable
+     */
     public function bucket(string $name): NatsKeyValueInterface
     {
         if (!isset($this->buckets[$name])) {

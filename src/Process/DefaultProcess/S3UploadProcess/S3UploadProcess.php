@@ -7,11 +7,14 @@ namespace WsFramework\Process\DefaultProcess\S3UploadProcess;
 use JsonException;
 use Workerman\Coroutine;
 use Workerman\Events\Swoole;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
 use WsFramework\Dto\StagePayloadDTO;
 use WsFramework\Dto\UseCase\FfmpegJobDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
+use WsFramework\Dto\UseCase\S3DownloadJobDTO;
 use WsFramework\Dto\UseCase\S3UploadJobDTO;
+use WsFramework\Enum\ClaimResult;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
@@ -19,11 +22,11 @@ use WsFramework\Process\DefaultProcess\BackgroundProcessAbstract;
 use WsFramework\Service\S3\S3ClientService;
 use WsFramework\UseCase\ClaimJobStageUseCase;
 use WsFramework\UseCase\CleanupJobDirectoryUseCase;
-use WsFramework\UseCase\DispatchJobByStatusUseCase;
 use WsFramework\UseCase\RecoverStuckJobsUseCase;
 use Package\NatsClient\NatsKeyValueInterface;
 use Basis\Nats\Message\Msg;
 use Workerman\Worker;
+use WsFramework\UseCase\ThrowableHandleUseCase;
 
 class S3UploadProcess extends BackgroundProcessAbstract
 {
@@ -51,10 +54,16 @@ class S3UploadProcess extends BackgroundProcessAbstract
         static::$protocol = 'unix';
     }
 
+    /**
+     * @return callable
+     */
     public static function onWorkerStart(): callable
     {
         return function (Worker $worker) {
             S3NatsChannel::main();
+            KVNatsBucket::main();
+
+            static::recoveryJob();
 
             $mainCallback = function (Msg $msg) {
                 echo "S3UploadProcess: received message: {$msg->payload->body}\n";
@@ -62,35 +71,17 @@ class S3UploadProcess extends BackgroundProcessAbstract
                 $dto = StagePayloadDTO::createFromArray($data);
                 $jobId = $dto->jobId;
 
-                $kv = S3NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
-                $e = null;
+                $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
 
-                try {
-                    static::executeUpload($jobId, $kv);
-                } catch (PipelineException $e) {
-                    throw $e;
-                } catch (\Throwable $e) {
-                    static::kvMerge($kv, new JobKVDTO(
-                        jobId: $jobId,
-                        status: FfmpegJobStatus::S3_UPLOAD_RESTARTED->value,
-                        s3Upload: new S3UploadJobDTO(
-                            errors: [['message' => $e->getMessage(), 'at' => date('c')]],
-                        ),
-                    ));
-                } finally {
-                    if (!$e instanceof PipelineException) {
-                        DispatchJobByStatusUseCase::handle($jobId, $kv);
-                    }
-                }
+                static::checkFailed($jobId, $kv);
+                static::checkClaimedStart($jobId, $kv);
+                static::executeUpload($jobId, $kv);
             };
 
             Coroutine::create(function () use ($mainCallback) {
                 S3NatsChannel::eventInterface()->on($mainCallback, S3NatsChannel::METHOD_UPLOAD);
             });
 
-//            Coroutine::create(function () {
-//                static::recoveryJob();
-//            });
             echo "S3UploadProcess consumer started on worker {$worker->id}\n";
         };
     }
@@ -100,11 +91,31 @@ class S3UploadProcess extends BackgroundProcessAbstract
      * @param NatsKeyValueInterface $kv
      * @return void
      * @throws JsonException
+     * @throws PipelineException
+     */
+    private static function checkFailed(string $jobId, NatsKeyValueInterface $kv): void
+    {
+        $existing = $kv->get($jobId);
+        $jobKVDTO = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
+
+        if (FfmpegJobStatus::S3_UPLOAD_FAILED->isEq($jobKVDTO->status)) {
+            $ex = new PipelineException('S3UploadProcess', "job {$jobId} skip — S3_UPLOAD_FAILED\n");
+            echo $ex->getMessage();
+            throw $ex;
+        }
+    }
+
+    /**
+     * @param string $jobId
+     * @param NatsKeyValueInterface $kv
+     * @return void
+     * @throws JsonException
+     * @throws PipelineException
      * @throws UseCaseException
      */
-    private static function executeUpload(string $jobId, NatsKeyValueInterface $kv): void
+    private static function checkClaimedStart(string $jobId, NatsKeyValueInterface $kv): void
     {
-        $claimed = ClaimJobStageUseCase::handle(
+        $result = ClaimJobStageUseCase::handle(
             new JobKVDTO(jobId: $jobId),
             $kv,
             allowedStatuses: [
@@ -114,11 +125,21 @@ class S3UploadProcess extends BackgroundProcessAbstract
             activeStatus: FfmpegJobStatus::S3_UPLOADING->value,
         );
 
-        if (!$claimed) {
-            echo "S3UploadProcess: job {$jobId} not claimable, skipping\n";
-            return;
+        if ($result !== ClaimResult::CLAIMED) {
+            $ex = new PipelineException('S3UploadProcess', "job {$jobId} skip — {$result->name}\n");
+            echo $ex->getMessage();
+            throw $ex;
         }
-
+    }
+    /**
+     * @param string $jobId
+     * @param NatsKeyValueInterface $kv
+     * @return void
+     * @throws JsonException
+     * @throws UseCaseException
+     */
+    private static function executeUpload(string $jobId, NatsKeyValueInterface $kv): void
+    {
         $existing = $kv->get($jobId);
         $jobData = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
 
@@ -141,7 +162,7 @@ class S3UploadProcess extends BackgroundProcessAbstract
             }
             $allFiles = glob($localHlsDir . '*');
             $hlsFiles = array_filter($allFiles ?: [], fn(string $f) =>
-                in_array(pathinfo($f, PATHINFO_EXTENSION), ['m3u8', 'ts'], true)
+                in_array(pathinfo($f, PATHINFO_EXTENSION), ['m3u8', 'ts'], true),
             );
             $tsCount = count(array_filter($hlsFiles, fn($f) => pathinfo($f, PATHINFO_EXTENSION) === 'ts'));
             if ($tsCount === 0) {
@@ -149,7 +170,7 @@ class S3UploadProcess extends BackgroundProcessAbstract
             }
             if ($expectedSegments !== null && $tsCount !== $expectedSegments) {
                 throw new \RuntimeException(
-                    "Segment count mismatch for job {$jobId}: expected {$expectedSegments}, found {$tsCount}"
+                    "Segment count mismatch for job {$jobId}: expected {$expectedSegments}, found {$tsCount}",
                 );
             }
 
@@ -182,54 +203,10 @@ class S3UploadProcess extends BackgroundProcessAbstract
             ));
         } catch (\Throwable $e) {
             echo "S3UploadProcess: error for job {$jobId}: {$e->getMessage()}\n";
-            static::handleError($kv, $jobId, $e, $jobData->maxRetries ?? 3, $jobData->retryCount ?? 0);
+            echo "S3UploadProcess: job {$jobId} retry {$jobData->retryCount}/{$jobData->maxRetries}\n";
+
+            ThrowableHandleUseCase::handle($jobData, $kv,$e);
         }
-    }
-
-    private static function handleError(
-        NatsKeyValueInterface $kv,
-        string $jobId,
-        \Throwable $e,
-        int $maxRetries,
-        int $retryCount,
-    ): void {
-        if ($retryCount >= $maxRetries) {
-            static::kvMerge($kv, new JobKVDTO(
-                jobId: $jobId,
-                status: FfmpegJobStatus::S3_UPLOAD_FAILED->value,
-                finishedAt: date('c'),
-                s3Upload: new S3UploadJobDTO(
-                    errors: [['message' => $e->getMessage(), 'at' => date('c')]],
-                ),
-            ));
-
-            $existing = $kv->get($jobId);
-            if ($existing) {
-                $jobData = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
-                CleanupJobDirectoryUseCase::handle(new JobKVDTO(
-                    jobId: $jobId,
-                    ffmpegJob: new FfmpegJobDTO(localHlsDir: $jobData->ffmpegJob?->localHlsDir),
-                ));
-            }
-
-            return;
-        }
-
-        static::kvMerge($kv, new JobKVDTO(
-            jobId: $jobId,
-            status: FfmpegJobStatus::S3_UPLOAD_PENDING->value,
-            retryCount: $retryCount + 1,
-            s3Upload: new S3UploadJobDTO(
-                errors: [['message' => $e->getMessage(), 'at' => date('c')]],
-            ),
-        ));
-
-        echo "S3UploadProcess: job {$jobId} retry {$retryCount}/{$maxRetries}\n";
-    }
-
-    protected static function setEventLoop(): void
-    {
-        static::$eventLoop = Swoole::class;
     }
 
     /**
@@ -240,7 +217,15 @@ class S3UploadProcess extends BackgroundProcessAbstract
      */
     private static function recoveryJob(): void
     {
-        $kv = S3NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
-        RecoverStuckJobsUseCase::handle($kv, [FfmpegJobStatus::S3_UPLOADING]);
+        $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
+        RecoverStuckJobsUseCase::handle(
+            $kv,
+            [FfmpegJobStatus::S3_UPLOADING, FfmpegJobStatus::S3_UPLOAD_PENDING, FfmpegJobStatus::S3_UPLOAD_RESTARTED],
+        );
+    }
+
+    protected static function setEventLoop(): void
+    {
+        static::$eventLoop = Swoole::class;
     }
 }

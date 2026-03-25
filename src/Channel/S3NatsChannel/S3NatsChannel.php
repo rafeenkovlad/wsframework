@@ -78,6 +78,7 @@ class S3NatsChannel extends ChannelAbstract
                 echo "S3NatsChannel: {$e->getMessage()}\n";
                 return;
             } catch (\Throwable $e) {
+                echo get_class($e);
                 echo "S3NatsChannel unhandled exception: {$e->getMessage()}\n";
                 throw $e;
             }

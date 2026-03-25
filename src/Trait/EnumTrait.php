@@ -48,4 +48,13 @@ trait EnumTrait
     {
         return array_map(fn(self $enum) => $enum->value, static::cases());
     }
+
+    /**
+     * @param string $name
+     * @return bool
+     */
+    public function isEq(string $name): bool
+    {
+        return $this->getName() === $name;
+    }
 }

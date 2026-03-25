@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace WsFramework\Service\Video;
 
+use JsonException;
 use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Dto\UseCase\FfmpegJobDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
+use WsFramework\Enum\ClaimResult;
 use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Enum\Pipeline;
+use WsFramework\Exception\S3\PipelineException;
+use WsFramework\Exception\UseCaseException;
 use WsFramework\Process\DefaultProcess\BackgroundProcessAbstract;
 use WsFramework\UseCase\ClaimJobStageUseCase;
+use WsFramework\UseCase\JobKVMergeUseCase;
+use WsFramework\UseCase\ThrowableHandleUseCase;
 
 readonly class FfmpegJobExecutor
 {
@@ -19,15 +26,22 @@ readonly class FfmpegJobExecutor
         private NatsKeyValueInterface $kv,
     ) {}
 
-    public function execute(string $jobId): void
+    /**
+     * Проверяем стартовый статус пайплайна
+     * @param string $jobId
+     * @param NatsKeyValueInterface $kv
+     * @return void
+     * @throws JsonException
+     * @throws PipelineException
+     * @throws UseCaseException
+     */
+    private function checkClaimedStart(string $jobId, NatsKeyValueInterface $kv): void
     {
         if (!$jobId) {
-            throw new \RuntimeException('FfmpegJobExecutor: missing jobId');
+            throw new PipelineException('FfmpegJobExecutor', 'missing jobId');
         }
 
-        $kv = $this->kv;
-
-        $claimed = ClaimJobStageUseCase::handle(
+        $result = ClaimJobStageUseCase::handle(
             new JobKVDTO(jobId: $jobId),
             $kv,
             allowedStatuses: [
@@ -37,10 +51,45 @@ readonly class FfmpegJobExecutor
             activeStatus: FfmpegJobStatus::PROCESSING->value,
         );
 
-        if (!$claimed) {
-            echo "FfmpegJobExecutor: job {$jobId} not claimable, skipping\n";
-            return;
+        if ($result !== ClaimResult::CLAIMED) {
+            $ex = new PipelineException('FfmpegJobExecutor', "job {$jobId} skip — {$result->name}\n");
+            echo $ex->getMessage();
+            throw $ex;
         }
+    }
+
+    /**
+     * @param string $jobId
+     * @param NatsKeyValueInterface $kv
+     * @return void
+     * @throws JsonException
+     * @throws PipelineException
+     */
+    private function checkFailed(string $jobId, NatsKeyValueInterface $kv): void
+    {
+        $existing = $kv->get($jobId);
+        $jobKVDTO = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
+
+        if (FfmpegJobStatus::FAILED->isEq($jobKVDTO->status)) {
+            $ex = new PipelineException('FfmpegQueueProcess', "job {$jobId} skip — FAILED\n");
+            echo $ex->getMessage();
+            throw $ex;
+        }
+    }
+
+    /**
+     * @param string $jobId
+     * @return JobKVDTO
+     * @throws JsonException
+     * @throws PipelineException
+     * @throws UseCaseException
+     * @throws \Throwable
+     */
+    public function execute(string $jobId): JobKVDTO
+    {
+        $kv = $this->kv;
+        $this->checkFailed($jobId, $kv);
+        $this->checkClaimedStart($jobId, $kv);
 
         $existing = $kv->get($jobId);
         $jobData = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
@@ -48,7 +97,7 @@ readonly class FfmpegJobExecutor
 
         try {
             if (!is_string($inputFile) || trim($inputFile) === '') {
-                throw new \RuntimeException("inputFile is required for job {$jobId}");
+                throw new PipelineException(Pipeline::FFMPEG->getName(), "inputFile is required for job {$jobId}");
             }
 
             $dimensions = $this->converter->getDimensions($inputFile);
@@ -63,7 +112,7 @@ readonly class FfmpegJobExecutor
             $tsFiles = glob($localHlsDir . '*.ts');
             $segmentCount = count($tsFiles ?: []);
 
-            BackgroundProcessAbstract::kvMerge($kv, new JobKVDTO(
+            $jobData = new JobKVDTO(
                 jobId: $jobId,
                 status: FfmpegJobStatus::S3_UPLOAD_PENDING->value,
                 ffmpegJob: new FfmpegJobDTO(
@@ -72,48 +121,17 @@ readonly class FfmpegJobExecutor
                     playlistFile: $playlistFile,
                     segmentCount: $segmentCount,
                 ),
-            ));
+            );
+
+            JobKVMergeUseCase::handle($jobData, $kv);
+
 
             echo "FfmpegJobExecutor: job {$jobId} converted, ready for s3_upload\n";
+
+            return $jobData;
         } catch (\Throwable $e) {
-            $this->handleError($kv, $jobId, $e);
-        }
-    }
-
-    private function handleError(
-        NatsKeyValueInterface $kv,
-        string $jobId,
-        \Throwable $e,
-    ): void {
-        $existing = $kv->get($jobId);
-        $jobData = $existing
-            ? JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR) ?: [])
-            : JobKVDTO::createFromArray(['jobId' => $jobId]);
-        $retryCount = $jobData->retryCount ?? 0;
-        $maxRetries = $jobData->maxRetries ?? 3;
-
-        if ($retryCount < $maxRetries) {
-            BackgroundProcessAbstract::kvMerge($kv, new JobKVDTO(
-                jobId: $jobId,
-                status: FfmpegJobStatus::PENDING->value,
-                retryCount: $retryCount + 1,
-                ffmpegJob: new FfmpegJobDTO(
-                    errors: [['message' => $e->getMessage(), 'at' => date('c')]],
-                ),
-            ));
-
-            echo "FfmpegJobExecutor: job {$jobId} retry {$retryCount}/{$maxRetries}\n";
-        } else {
-            BackgroundProcessAbstract::kvMerge($kv, new JobKVDTO(
-                jobId: $jobId,
-                status: FfmpegJobStatus::FAILED->value,
-                finishedAt: date('c'),
-                ffmpegJob: new FfmpegJobDTO(
-                    errors: [['message' => $e->getMessage(), 'at' => date('c')]],
-                ),
-            ));
-
-            echo "FfmpegJobExecutor: job {$jobId} failed permanently: {$e->getMessage()}\n";
+            echo "FfmpegJobExecutor: job {$jobId} retry {$jobData->retryCount}/{$jobData->maxRetries}\n";
+            ThrowableHandleUseCase::handle($jobData, $kv,$e);
         }
     }
 }

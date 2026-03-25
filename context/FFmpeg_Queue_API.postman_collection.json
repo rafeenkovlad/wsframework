@@ -2,19 +2,23 @@
 	"info": {
 		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
 		"name": "FFmpeg Queue API",
-		"description": "OpenRPC API для FFmpeg Queue сервиса.\n\nВсе методы вызываются через HTTP POST с JSON body.\nПараметры верхнего уровня: id, method, params.\n\nПайплайн: S3 Download → FFmpeg HLS → S3 Upload.\nСтатусы задач: s3_download_pending → s3_downloading → pending → processing → completed (или failed на любом этапе).\nS3 Upload: s3_upload_pending → s3_uploading → completed.",
+		"description": "JSON-RPC 2.0 API for FFmpeg Queue service.\n\nПайплайн: S3 Download → FFmpeg HLS → S3 Upload → Cleanup.\n\nВсе методы принимают JSON-RPC 2.0 запросы (POST). Ответы содержат типизированную структуру JobKVDTO с вложенными объектами стадий (s3Download, ffmpegJob, s3Upload, cleanup).",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
 		{
 			"key": "baseUrl",
 			"value": "http://localhost:8091"
+		},
+		{
+			"key": "jobId",
+			"value": "job-uuid-here"
 		}
 	],
 	"item": [
 		{
 			"name": "Pipeline",
-			"description": "Запуск и управление полным пайплайном обработки видео.",
+			"description": "Запуск и управление пайплайном обработки видео.",
 			"item": [
 				{
 					"name": "processVideoCallback",
@@ -36,33 +40,36 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Запустить полный пайплайн: S3 Download → FFmpeg HLS → S3 Upload.\n\nОбязательные параметры:\n- s3Key — ключ файла в S3-бакете\n\nОпциональные:\n- s3Bucket — имя бакета (по умолчанию из ENV S3_BUCKET)\n- outputS3Prefix — префикс для HLS-файлов в S3 (по умолчанию dirname(s3Key)/hls/)\n- maxRetries — макс. ретраи для S3 операций (по умолчанию из ENV S3_PIPELINE_MAX_RETRIES или 3)"
+						"description": "Запустить полный пайплайн: S3 Download → FFmpeg HLS → S3 Upload.\n\nПараметры:\n- s3Key (required) — ключ файла в S3-бакете\n- s3Bucket — имя бакета (по умолчанию из ENV)\n- outputS3Prefix — префикс для выходных HLS-файлов в S3\n- maxRetries — максимальное число ретраев для S3 операций"
 					},
-					"response": []
-				},
-				{
-					"name": "restartJob",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.restartJob\",\n\t\"params\": {\n\t\t\"jobId\": \"<jobId>\"\n\t}\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}",
-							"host": [
-								"{{baseUrl}}"
-							]
-						},
-						"description": "Перезапустить задачу со статусом failed, cancelled или зависшую на стадии S3 (download/upload failed, stuck downloading/uploading).\n\nЛогика перезапуска:\n- s3_download_failed / s3_downloading (stuck) → повторный S3 Download\n- s3_upload_failed / s3_uploading (stuck) → повторный S3 Upload\n- failed / cancelled → сброс до pending, повторная отправка в ffmpeg очередь"
-					},
-					"response": []
+					"response": [
+						{
+							"name": "Success — job created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.processVideoCallback\",\n\t\"params\": {\n\t\t\"s3Key\": \"input/video.mp4\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\"status\": \"s3_download_pending\"\n\t}\n}"
+						}
+					]
 				},
 				{
 					"name": "cancelJob",
@@ -76,7 +83,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.cancelJob\",\n\t\"params\": {\n\t\t\"jobId\": \"<jobId>\"\n\t}\n}"
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.cancelJob\",\n\t\"params\": {\n\t\t\"jobId\": \"{{jobId}}\"\n\t}\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}",
@@ -84,42 +91,39 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Отменить задачу со статусом pending или на стадии S3 (download/upload pending, downloading, uploading).\n\nЗадачи в статусе processing (FFmpeg уже работает) отменить нельзя.\nИспользуется CAS через revision для защиты от race condition."
+						"description": "Отменить задачу со статусом pending, на стадии S3 или со статусом restarted.\n\nИспользует optimistic locking (revision) — при конкурентном изменении вернёт ошибку.\n\nДопустимые статусы для отмены: pending, s3_download_pending, s3_downloading, s3_upload_pending, s3_uploading, s3_download_restarted, processing_restarted, s3_upload_restarted."
 					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Jobs",
-			"description": "Просмотр и управление отдельными задачами.",
-			"item": [
-				{
-					"name": "getJobStatus",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getJobStatus\",\n\t\"params\": {\n\t\t\"jobId\": \"<jobId>\"\n\t}\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}",
-							"host": [
-								"{{baseUrl}}"
-							]
-						},
-						"description": "Получить текущее состояние задачи FFmpeg по её идентификатору.\n\nВозвращает полный объект задачи из KV: jobId, status, inputFile, outputFile, options, timestamps, ошибки."
-					},
-					"response": []
+					"response": [
+						{
+							"name": "Success — job cancelled",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.cancelJob\",\n\t\"params\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\"cancelled\": true\n\t}\n}"
+						}
+					]
 				},
 				{
-					"name": "listJobs",
+					"name": "restartJob",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -130,7 +134,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listJobs\",\n\t\"params\": {\n\t\t\"status\": null,\n\t\t\"limit\": 20,\n\t\t\"offset\": 0,\n\t\t\"sortOrder\": \"desc\"\n\t}\n}"
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.restartJob\",\n\t\"params\": {\n\t\t\"jobId\": \"{{jobId}}\"\n\t}\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}",
@@ -138,9 +142,88 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Получить список задач FFmpeg-очереди с фильтрацией по статусу и пагинацией.\n\nПараметры (все опциональные):\n- status — фильтр по статусу (s3_download_pending, s3_downloading, s3_download_failed, pending, processing, completed, failed, cancelled, s3_upload_pending, s3_uploading, s3_upload_failed)\n- limit — макс. элементов (1–200, по умолчанию 20)\n- offset — смещение (по умолчанию 0)\n- sortOrder — asc/desc по createdAt (по умолчанию asc)"
+						"description": "Перезапустить задачу со статусом failed, cancelled или зависшую на стадии S3/FFmpeg.\n\nДопустимые статусы: failed, cancelled, processing (stuck), s3_download_failed, s3_upload_failed, s3_downloading (stuck), s3_uploading (stuck).\n\nПри перезапуске определяется стадия и задача отправляется в соответствующий поток (S3 Download / S3 Upload / FFmpeg)."
 					},
-					"response": []
+					"response": [
+						{
+							"name": "Success — job restarted (ffmpeg pipeline)",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.restartJob\",\n\t\"params\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\"restarted\": true,\n\t\t\"status\": \"pending\"\n\t}\n}"
+						},
+						{
+							"name": "Success — job restarted (s3 download)",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.restartJob\",\n\t\"params\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\"restarted\": true,\n\t\t\"status\": \"s3_download_pending\"\n\t}\n}"
+						},
+						{
+							"name": "Success — job restarted (s3 upload)",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.restartJob\",\n\t\"params\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\"restarted\": true,\n\t\t\"status\": \"s3_upload_pending\"\n\t}\n}"
+						}
+					]
 				},
 				{
 					"name": "deleteJob",
@@ -154,7 +237,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.deleteJob\",\n\t\"params\": {\n\t\t\"jobId\": \"<jobId>\"\n\t}\n}"
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.deleteJob\",\n\t\"params\": {\n\t\t\"jobId\": \"{{jobId}}\"\n\t}\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}",
@@ -162,63 +245,36 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Удалить терминальную задачу из KV-хранилища очереди.\n\nДопустимые статусы для удаления: completed, failed, cancelled, s3_download_failed, s3_upload_failed.\nЗадачи в активных статусах (pending, processing, downloading, uploading) удалить нельзя."
+						"description": "Удалить терминальную задачу из KV-хранилища и очистить временные файлы.\n\nДопустимые статусы: completed, failed, cancelled, s3_download_failed, s3_upload_failed."
 					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Queue stats",
-			"description": "Статистика и DLQ.",
-			"item": [
-				{
-					"name": "getQueueStats",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getQueueStats\",\n\t\"params\": {}\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}",
-							"host": [
-								"{{baseUrl}}"
-							]
-						},
-						"description": "Получить агрегированную статистику: KV по статусам, JetStream stream, DLQ per-stage (ffmpeg/s3Download/s3Upload), consumer и worker-процессы.\n\nПараметров нет.\n\nОтвет:\n- totalJobs — общее кол-во задач в KV\n- byStatus — подсчёт по каждому статусу\n- stream — состояние JetStream stream (messages, bytes, firstSeq, lastSeq)\n- dlq — DLQ per-stage: ffmpeg, s3Download, s3Upload (messages в каждом)\n- consumer — pending, ackFloor\n- workers — configured, busy, idle"
-					},
-					"response": []
-				},
-				{
-					"name": "dlq",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.dlq\",\n\t\"params\": {\n\t\t\"limit\": 10\n\t}\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}",
-							"host": [
-								"{{baseUrl}}"
-							]
-						},
-						"description": "Получить DLQ: список задач со статусами failed, s3_download_failed, s3_upload_failed.\n\nОпциональные параметры:\n- limit — макс. элементов (1–200, по умолчанию 20)\n\nСортировка по finishedAt desc (самые свежие сбои первыми)."
-					},
-					"response": []
+					"response": [
+						{
+							"name": "Success — job deleted",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.deleteJob\",\n\t\"params\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\"deleted\": true\n\t}\n}"
+						}
+					]
 				},
 				{
 					"name": "purgeCompleted",
@@ -240,18 +296,39 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Удалить из KV-хранилища все задачи со статусом completed.\n\nПараметров нет.\nВозвращает purged — количество удалённых задач."
+						"description": "Удалить из KV-хранилища все задачи со статусом completed и очистить временные файлы."
 					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Documentation",
-			"description": "OpenRPC-документация сервиса.",
-			"item": [
+					"response": [
+						{
+							"name": "Success — purged 5 jobs",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.purgeCompleted\",\n\t\"params\": {}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"purged\": 5\n\t}\n}"
+						}
+					]
+				},
 				{
-					"name": "Doc — все методы",
+					"name": "purgeAll",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -262,7 +339,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"Doc\",\n\t\"params\": {}\n}"
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.purgeAll\",\n\t\"params\": {}\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}",
@@ -270,12 +347,305 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Получить OpenRPC-описание всех методов сервиса."
+						"description": "Удалить из KV-хранилища все задачи и очистить временные файлы."
+					},
+					"response": [
+						{
+							"name": "Success — purged all jobs",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.purgeAll\",\n\t\"params\": {}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"purged\": 42\n\t}\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Monitoring",
+			"description": "Мониторинг задач и статистика очередей.",
+			"item": [
+				{
+					"name": "getJobStatus",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getJobStatus\",\n\t\"params\": {\n\t\t\"jobId\": \"{{jobId}}\"\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить текущее состояние задачи FFmpeg по её идентификатору.\n\nВозвращает типизированную структуру JobKVDTO с вложенными объектами стадий: s3Download, ffmpegJob, s3Upload, cleanup."
+					},
+					"response": [
+						{
+							"name": "Success — completed job",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getJobStatus\",\n\t\"params\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\"status\": \"completed\",\n\t\t\"s3Key\": \"input/video.mp4\",\n\t\t\"s3Bucket\": \"my-bucket\",\n\t\t\"outputS3Prefix\": \"output/hls/\",\n\t\t\"retryCount\": 0,\n\t\t\"maxRetries\": 3,\n\t\t\"createdAt\": \"2025-03-20T10:00:00+00:00\",\n\t\t\"updatedAt\": \"2025-03-20T10:05:30+00:00\",\n\t\t\"startedAt\": \"2025-03-20T10:00:05+00:00\",\n\t\t\"finishedAt\": \"2025-03-20T10:05:30+00:00\",\n\t\t\"s3Download\": {\n\t\t\t\"inputFile\": \"/tmp/jobs/a1b2c3d4/video.mp4\"\n\t\t},\n\t\t\"ffmpegJob\": {\n\t\t\t\"outputFile\": \"video_720p.m3u8\",\n\t\t\t\"localHlsDir\": \"/tmp/jobs/a1b2c3d4/hls\",\n\t\t\t\"playlistFile\": \"/tmp/jobs/a1b2c3d4/hls/video_720p.m3u8\",\n\t\t\t\"segmentCount\": 12,\n\t\t\t\"options\": {\n\t\t\t\t\"resolution\": \"720p\"\n\t\t\t},\n\t\t\t\"progress\": 100\n\t\t},\n\t\t\"s3Upload\": {\n\t\t\t\"playlistS3Key\": \"output/hls/video_720p.m3u8\"\n\t\t},\n\t\t\"cleanup\": {}\n\t}\n}"
+						},
+						{
+							"name": "Success — failed job with errors",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getJobStatus\",\n\t\"params\": {\n\t\t\"jobId\": \"b2c3d4e5f67890abcdef1234567890a1\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobId\": \"b2c3d4e5f67890abcdef1234567890a1\",\n\t\t\"status\": \"failed\",\n\t\t\"s3Key\": \"input/broken.mp4\",\n\t\t\"s3Bucket\": \"my-bucket\",\n\t\t\"retryCount\": 3,\n\t\t\"maxRetries\": 3,\n\t\t\"createdAt\": \"2025-03-20T10:00:00+00:00\",\n\t\t\"updatedAt\": \"2025-03-20T10:02:15+00:00\",\n\t\t\"startedAt\": \"2025-03-20T10:00:05+00:00\",\n\t\t\"finishedAt\": \"2025-03-20T10:02:15+00:00\",\n\t\t\"s3Download\": {\n\t\t\t\"inputFile\": \"/tmp/jobs/b2c3d4e5/broken.mp4\"\n\t\t},\n\t\t\"ffmpegJob\": {\n\t\t\t\"progress\": 0,\n\t\t\t\"errors\": [\n\t\t\t\t{\n\t\t\t\t\t\"message\": \"FFmpeg exited with code 1: Invalid data found when processing input\",\n\t\t\t\t\t\"at\": \"2025-03-20T10:02:15+00:00\"\n\t\t\t\t}\n\t\t\t]\n\t\t}\n\t}\n}"
+						}
+					]
+				},
+				{
+					"name": "listJobs",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listJobs\",\n\t\"params\": {\n\t\t\"status\": null,\n\t\t\"limit\": 20,\n\t\t\"offset\": 0,\n\t\t\"sortOrder\": \"desc\"\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить список задач FFmpeg-очереди с фильтрацией по статусу и пагинацией.\n\nПараметры:\n- status — опциональный фильтр по любому статусу из OpenRPC enum\n- limit — макс. количество (1–200, по умолчанию 50)\n- offset — смещение (по умолчанию 0)\n- sortOrder — asc/desc по createdAt"
+					},
+					"response": [
+						{
+							"name": "Success — list of jobs",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listJobs\",\n\t\"params\": {\n\t\t\"limit\": 2,\n\t\t\"offset\": 0,\n\t\t\"sortOrder\": \"desc\"\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobs\": [\n\t\t\t{\n\t\t\t\t\"jobId\": \"a1b2c3d4e5f67890abcdef1234567890\",\n\t\t\t\t\"status\": \"completed\",\n\t\t\t\t\"s3Key\": \"input/video.mp4\",\n\t\t\t\t\"s3Bucket\": \"my-bucket\",\n\t\t\t\t\"createdAt\": \"2025-03-20T10:00:00+00:00\",\n\t\t\t\t\"finishedAt\": \"2025-03-20T10:05:30+00:00\",\n\t\t\t\t\"s3Download\": {\n\t\t\t\t\t\"inputFile\": \"/tmp/jobs/a1b2c3d4/video.mp4\"\n\t\t\t\t},\n\t\t\t\t\"ffmpegJob\": {\n\t\t\t\t\t\"outputFile\": \"video_720p.m3u8\",\n\t\t\t\t\t\"segmentCount\": 12,\n\t\t\t\t\t\"progress\": 100\n\t\t\t\t},\n\t\t\t\t\"s3Upload\": {\n\t\t\t\t\t\"playlistS3Key\": \"output/hls/video_720p.m3u8\"\n\t\t\t\t}\n\t\t\t},\n\t\t\t{\n\t\t\t\t\"jobId\": \"c3d4e5f67890abcdef1234567890a1b2\",\n\t\t\t\t\"status\": \"processing\",\n\t\t\t\t\"s3Key\": \"input/clip.mov\",\n\t\t\t\t\"s3Bucket\": \"my-bucket\",\n\t\t\t\t\"createdAt\": \"2025-03-20T09:55:00+00:00\",\n\t\t\t\t\"startedAt\": \"2025-03-20T09:55:10+00:00\",\n\t\t\t\t\"s3Download\": {\n\t\t\t\t\t\"inputFile\": \"/tmp/jobs/c3d4e5f6/clip.mov\"\n\t\t\t\t},\n\t\t\t\t\"ffmpegJob\": {\n\t\t\t\t\t\"progress\": 47\n\t\t\t\t}\n\t\t\t}\n\t\t],\n\t\t\"total\": 15,\n\t\t\"limit\": 2,\n\t\t\"offset\": 0\n\t}\n}"
+						}
+					]
+				},
+				{
+					"name": "listJobs (filter by status)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listJobs\",\n\t\"params\": {\n\t\t\"status\": \"processing\",\n\t\t\"limit\": 10,\n\t\t\"offset\": 0,\n\t\t\"sortOrder\": \"asc\"\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить список задач с фильтром по конкретному статусу."
 					},
 					"response": []
 				},
 				{
-					"name": "Doc — один метод",
+					"name": "getQueueStats",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getQueueStats\",\n\t\"params\": {}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить агрегированную статистику сервиса:\n- totalJobs — общее количество задач в KV\n- byStatus — счётчики по каждому статусу из enum\n- streams — JetStream streams по стадиям s3Download / ffmpegJobs / s3Upload\n- consumer — состояние durable consumer FFmpeg worker-процесса\n- workers — configured / busy / idle"
+					},
+					"response": [
+						{
+							"name": "Success — queue stats",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.getQueueStats\",\n\t\"params\": {}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"totalJobs\": 42,\n\t\t\"byStatus\": {\n\t\t\t\"s3_download_pending\": 2,\n\t\t\t\"s3_downloading\": 1,\n\t\t\t\"s3_download_failed\": 0,\n\t\t\t\"pending\": 5,\n\t\t\t\"processing\": 3,\n\t\t\t\"completed\": 25,\n\t\t\t\"failed\": 2,\n\t\t\t\"cancelled\": 1,\n\t\t\t\"s3_upload_pending\": 1,\n\t\t\t\"s3_uploading\": 2,\n\t\t\t\"s3_upload_failed\": 0,\n\t\t\t\"s3_download_restarted\": 0,\n\t\t\t\"processing_restarted\": 1,\n\t\t\t\"s3_upload_restarted\": 0\n\t\t},\n\t\t\"streams\": {\n\t\t\t\"s3Download\": {\n\t\t\t\t\"messages\": 12,\n\t\t\t\t\"bytes\": 8192,\n\t\t\t\t\"firstSeq\": 1,\n\t\t\t\t\"lastSeq\": 12\n\t\t\t},\n\t\t\t\"ffmpegJobs\": {\n\t\t\t\t\"messages\": 8,\n\t\t\t\t\"bytes\": 6144,\n\t\t\t\t\"firstSeq\": 1,\n\t\t\t\t\"lastSeq\": 8\n\t\t\t},\n\t\t\t\"s3Upload\": {\n\t\t\t\t\"messages\": 4,\n\t\t\t\t\"bytes\": 4096,\n\t\t\t\t\"firstSeq\": 1,\n\t\t\t\t\"lastSeq\": 4\n\t\t\t}\n\t\t},\n\t\t\"consumer\": {\n\t\t\t\"pending\": 5,\n\t\t\t\"ackFloor\": 140\n\t\t},\n\t\t\"workers\": {\n\t\t\t\"configured\": 4,\n\t\t\t\"busy\": 3,\n\t\t\t\"idle\": 1\n\t\t}\n\t}\n}"
+						}
+					]
+				},
+				{
+					"name": "listFailedJobs",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listFailedJobs\",\n\t\"params\": {\n\t\t\"limit\": 10\n\t}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить список задач со статусами failed, s3_download_failed и s3_upload_failed.\n\nПараметры:\n- limit — макс. количество (1–200, по умолчанию 20)\n\nСортировка: по finishedAt desc."
+					},
+					"response": [
+						{
+							"name": "Success — failed jobs list",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n\t\"id\": 1,\n\t\"method\": \"ffmpegQueue.listFailedJobs\",\n\t\"params\": {\n\t\t\"limit\": 10\n\t}\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}",
+									"host": [
+										"{{baseUrl}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n\t\"id\": 1,\n\t\"result\": {\n\t\t\"jobs\": [\n\t\t\t{\n\t\t\t\t\"jobId\": \"d4e5f67890abcdef1234567890a1b2c3\",\n\t\t\t\t\"status\": \"s3_download_failed\",\n\t\t\t\t\"s3Key\": \"input/missing.mp4\",\n\t\t\t\t\"s3Bucket\": \"my-bucket\",\n\t\t\t\t\"retryCount\": 3,\n\t\t\t\t\"maxRetries\": 3,\n\t\t\t\t\"createdAt\": \"2025-03-20T09:00:00+00:00\",\n\t\t\t\t\"finishedAt\": \"2025-03-20T09:01:45+00:00\",\n\t\t\t\t\"s3Download\": {\n\t\t\t\t\t\"errors\": [\n\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\"message\": \"S3 GetObject: NoSuchKey\",\n\t\t\t\t\t\t\t\"at\": \"2025-03-20T09:01:45+00:00\"\n\t\t\t\t\t\t}\n\t\t\t\t\t]\n\t\t\t\t}\n\t\t\t},\n\t\t\t{\n\t\t\t\t\"jobId\": \"e5f67890abcdef1234567890a1b2c3d4\",\n\t\t\t\t\"status\": \"failed\",\n\t\t\t\t\"s3Key\": \"input/corrupt.avi\",\n\t\t\t\t\"s3Bucket\": \"my-bucket\",\n\t\t\t\t\"retryCount\": 1,\n\t\t\t\t\"maxRetries\": 3,\n\t\t\t\t\"createdAt\": \"2025-03-20T08:30:00+00:00\",\n\t\t\t\t\"finishedAt\": \"2025-03-20T08:32:10+00:00\",\n\t\t\t\t\"s3Download\": {\n\t\t\t\t\t\"inputFile\": \"/tmp/jobs/e5f67890/corrupt.avi\"\n\t\t\t\t},\n\t\t\t\t\"ffmpegJob\": {\n\t\t\t\t\t\"progress\": 0,\n\t\t\t\t\t\"errors\": [\n\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\"message\": \"FFmpeg exited with code 1: moov atom not found\",\n\t\t\t\t\t\t\t\"at\": \"2025-03-20T08:32:10+00:00\"\n\t\t\t\t\t\t}\n\t\t\t\t\t]\n\t\t\t\t}\n\t\t\t}\n\t\t],\n\t\t\"total\": 2\n\t}\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Documentation",
+			"description": "OpenRPC-документация методов.",
+			"item": [
+				{
+					"name": "Doc — get method schema",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -294,7 +664,31 @@
 								"{{baseUrl}}"
 							]
 						},
-						"description": "Получить OpenRPC-описание одного метода по имени.\n\nОпциональные параметры:\n- getMethodByName — имя метода (например ffmpegQueue.processVideoCallback)"
+						"description": "Получить OpenRPC-документацию для метода по имени.\n\nДоступные методы:\n- Doc\n- ffmpegQueue.processVideoCallback\n- ffmpegQueue.getJobStatus\n- ffmpegQueue.listJobs\n- ffmpegQueue.getQueueStats\n- ffmpegQueue.cancelJob\n- ffmpegQueue.restartJob\n- ffmpegQueue.deleteJob\n- ffmpegQueue.purgeCompleted\n- ffmpegQueue.listFailedJobs\n- ffmpegQueue.purgeAll"
+					},
+					"response": []
+				},
+				{
+					"name": "Doc — list all methods",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"method\": \"Doc\",\n\t\"params\": {}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						},
+						"description": "Получить полный список доступных методов API."
 					},
 					"response": []
 				}

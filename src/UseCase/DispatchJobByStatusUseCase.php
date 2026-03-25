@@ -13,9 +13,10 @@ use WsFramework\Enum\FfmpegJobStatus;
 
 class DispatchJobByStatusUseCase
 {
-    public static function handle(string $jobId, NatsKeyValueInterface $kv): void
+    public static function handle(JobKVDTO $jobKVDTO, NatsKeyValueInterface $kv): void
     {
-        $existing = $kv->get($jobId);
+        $existing = $kv->get($jobKVDTO->jobId);
+
         if (!$existing) {
             return;
         }
@@ -44,5 +45,21 @@ class DispatchJobByStatusUseCase
 
             default => null,
         };
+    }
+
+    /**
+     * @param JobKVDTO $jobFromKV
+     * @param JobKVDTO $jobCurrent
+     * @return bool
+     */
+    private static function checkEqStatus(JobKVDTO $jobFromKV, JobKVDTO $jobCurrent): bool
+    {
+        if ($jobFromKV->status === $jobCurrent->status) {
+            return true;
+        }
+
+        sleep(1);
+
+        return false;
     }
 }
