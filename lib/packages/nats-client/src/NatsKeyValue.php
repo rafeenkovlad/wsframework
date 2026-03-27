@@ -7,6 +7,7 @@ namespace Package\NatsClient;
 use Basis\Nats\KeyValue\Bucket;
 use Basis\Nats\KeyValue\Entry;
 use Basis\Nats\KeyValue\Status;
+use Workerman\Timer;
 
 readonly class NatsKeyValue implements NatsKeyValueInterface
 {
@@ -74,7 +75,7 @@ readonly class NatsKeyValue implements NatsKeyValueInterface
 
                 if ($attempt < $maxAttempts) {
                     $delay = min($attempt * $attempt, 10);
-                    sleep($delay);
+                    Timer::sleep($delay);
                 }
             }
         }

@@ -98,7 +98,7 @@ class NatsClient
 
                 if ($attempt < $maxAttempts) {
                     $delay = min($attempt * $attempt, 10);
-                    sleep($delay);
+                    Timer::sleep($delay);
                 }
             }
         }
