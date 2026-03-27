@@ -2,7 +2,6 @@
 
 namespace WsFramework\UseCase;
 
-use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Dto\DataTransferObject;
 use WsFramework\Dto\UseCase\FfmpegJobDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
@@ -14,9 +13,6 @@ use WsFramework\Exception\S3\PipelineException;
 
 class ThrowableHandleUseCase extends AbstractUseCase
 {
-
-    private NatsKeyValueInterface $kv;
-
     /**
      * @param JobKVDTO $DTO
      * @param ...$args
@@ -28,18 +24,14 @@ class ThrowableHandleUseCase extends AbstractUseCase
         $static = static::create($DTO);
 
         foreach ($args as $arg) {
-            if ($arg instanceof NatsKeyValueInterface) {
-                [$kv] = $args;
-                $static->kv = $kv;
-            }
 
             if ($arg instanceof \Throwable) {
                 $static->throw($arg);
+                continue;
             }
-        }
-
-        if (!isset($static->kv)) {
-            throw new PipelineException($DTO->status, 'No kv provided');
+            if ($arg) {
+                throw new PipelineException(DefineCurrentPipelineUseCase::handle()->getName(), 'Current status: ' . $DTO->status . 'Only throwable arguments are allowed');
+            }
         }
     }
 
@@ -79,7 +71,6 @@ class ThrowableHandleUseCase extends AbstractUseCase
                 finishedAt: date('c'),
                 s3Download: $errorDTO,
             ),
-            $this->kv,
         );
 
         $this->mayBePipelineException($pipeline, $e);

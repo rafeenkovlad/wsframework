@@ -6,7 +6,6 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
@@ -14,6 +13,7 @@ use WsFramework\Process\DefaultProcess\BackgroundProcessAbstract;
 use WsFramework\Pool\Http\PoolHttpConnection;
 use WsFramework\Trait\FfmpegJobIdValidationTrait;
 use WsFramework\UseCase\DispatchJobByStatusUseCase;
+use WsFramework\UseCase\GetKVInterfaceUseCase;
 use WsFramework\UseCase\JobKVMergeUseCase;
 
 class RestartJob extends MethodAbstract
@@ -55,7 +55,7 @@ class RestartJob extends MethodAbstract
             return [];
         }
 
-        $kv = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
+        $kv = GetKVInterfaceUseCase::handle();
         $existing = $kv->get($jobId);
 
         if (!$existing) {
@@ -113,9 +113,9 @@ class RestartJob extends MethodAbstract
             retryCount: 0,
         );
 
-        JobKVMergeUseCase::handle($jobKVDTO, $kv);
+        JobKVMergeUseCase::handle($jobKVDTO);
 
-        DispatchJobByStatusUseCase::handle($jobKVDTO, $kv);
+        DispatchJobByStatusUseCase::handle($jobKVDTO);
 
         return ['jobId' => $jobId, 'restarted' => true, 'status' => $targetStatus];
     }

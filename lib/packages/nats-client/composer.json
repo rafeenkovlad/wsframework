@@ -12,6 +12,6 @@
         }
     },
     "require": {
-        "basis-company/nats": "^1.1.2"
+        "basis-company/nats": "^1.2.1"
     }
 }

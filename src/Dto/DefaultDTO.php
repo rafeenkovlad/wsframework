@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 namespace WsFramework\Dto;
 
+use WsFramework\Channel\ChannelAbstract;
+use WsFramework\Enum\Pipeline;
+
+/**
+ * @property Pipeline $pipeline
+ * @property ChannelAbstract $channel
+ */
 #[\AllowDynamicProperties]
 class defaultDTO extends DataTransferObject
 {

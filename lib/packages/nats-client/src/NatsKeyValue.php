@@ -8,50 +8,77 @@ use Basis\Nats\KeyValue\Bucket;
 use Basis\Nats\KeyValue\Entry;
 use Basis\Nats\KeyValue\Status;
 
-class NatsKeyValue implements NatsKeyValueInterface
+readonly class NatsKeyValue implements NatsKeyValueInterface
 {
     public function __construct(
-        private readonly Bucket $bucket,
+        private Bucket $bucket,
     ) {
     }
 
     public function get(string $key): ?string
     {
-        return $this->bucket->get($key);
+        return static::retryConnection(fn() => $this->bucket->get($key));
     }
 
     public function getEntry(string $key): ?Entry
     {
-        return $this->bucket->getEntry($key);
+        return static::retryConnection(fn() => $this->bucket->getEntry($key));
     }
 
     public function getAll(): array
     {
-        return $this->bucket->getAll();
+        return static::retryConnection(fn() => $this->bucket->getAll());
     }
 
     public function put(string $key, string $value): int
     {
-        return $this->bucket->put($key, $value);
+        return static::retryConnection(fn() => $this->bucket->put($key, $value));
     }
 
     public function update(string $key, string $value, int $revision): int
     {
-        return $this->bucket->update($key, $value, $revision);
+        return static::retryConnection(fn() => $this->bucket->update($key, $value, $revision));
     }
 
     public function delete(string $key): void
     {
-        $this->bucket->delete($key);
+        static::retryConnection(fn() => $this->bucket->delete($key));
     }
 
     public function purge(string $key): void
     {
-        $this->bucket->purge($key);
+        static::retryConnection(fn()=> $this->bucket->purge($key));
     }
 
     public function getStatus(): Status
     {
-        return $this->bucket->getStatus();
+        return static::retryConnection(fn() => $this->bucket->getStatus());
+    }
+
+    /**
+     * @param callable $fn
+     * @param int $maxAttempts
+     * @return mixed
+     * @throws \Throwable
+     */
+    private static function retryConnection(callable $fn, int $maxAttempts = 5): mixed
+    {
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; ++$attempt) {
+            try {
+                return $fn();
+            } catch (\Throwable $e) {
+                $lastException = $e;
+                echo "Nats KV connection failed, attempt: {$attempt}/{$maxAttempts} — {$e->getMessage()}\n";
+
+                if ($attempt < $maxAttempts) {
+                    $delay = min($attempt * $attempt, 10);
+                    sleep($delay);
+                }
+            }
+        }
+
+        throw $lastException;
     }
 }

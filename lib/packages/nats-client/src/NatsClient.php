@@ -11,7 +11,7 @@ use WsFramework\Pool\Nats\PoolConsumer;
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
 use Basis\Nats\Consumer\Consumer;
-use Basis\Nats\Consumer\Configuration as ConsumerConfiguration;
+
 use Basis\Nats\Message\Msg;
 use Basis\Nats\Queue;
 use Basis\Nats\Stream\RetentionPolicy;
@@ -112,15 +112,10 @@ class NatsClient
     private function initConsumers(): static
     {
         foreach ($this->consumers as ['stream' => $stream, 'name' => $name, 'subject' => $subject]) {
-            $subject ??= $name;
 
             $this->createStream($stream, $subject);
-            $consumerConfig = new ConsumerConfiguration(
-                $stream,
-                $name,
-            );
-            $consumerConfig->setSubjectFilter($subject);
-            $consumer = new Consumer($this->client, $consumerConfig);
+            $consumer = new Consumer($this->client, $stream, $name);
+            $consumer->getConfiguration()->setSubjectFilter($subject);
             $consumer->create();
 
             PoolConsumer::addOffset($name);
@@ -180,7 +175,7 @@ class NatsClient
 
             try {
                 $msg->progress();
-                $timer = Timer::add(10, fn() => $msg->progress());
+                $timer = Timer::add(5, fn() => $msg->progress());
                 static::retryConnection(fn() => call_user_func($callback, $msg));
                 Timer::del($timer);
                 $msg->ack();
@@ -189,11 +184,13 @@ class NatsClient
                 echo "NATS handler json error: {$e->getMessage()}\n";
                 echo "NATS message render:  {$msg->render()}\n";
                 $msg->ack();
+                Timer::del($timer);
             }
             catch (\Throwable $e) {
                 echo "NATS handler error: {$e->getMessage()}\n";
                 echo "NATS message render:  {$msg->render()}\n";
                 $msg->nack((float)($_ENV['NATS_DELAY_NACK_IN_LOOP'] ?? 5000000));
+                Timer::del($timer);
             }
         }
     }
@@ -202,11 +199,13 @@ class NatsClient
      * @param Consumer $consumer
      * @param mixed $data
      * @return void
+     * @throws Throwable
      */
     public static function publish(Consumer $consumer, mixed $data): void
     {
         $subject = $consumer->getConfiguration()->getSubjectFilter() ?? $consumer->getName();
-        $consumer->client->publish($subject, $data);
+        $stream = $consumer->client->getApi()->getStream($consumer->getStream());
+        static::retryConnection(fn() => $stream->publish($subject, $data));
     }
 
     /**
@@ -218,18 +217,29 @@ class NatsClient
     {
         if (!isset($this->buckets[$name])) {
             $this->buckets[$name] = new NatsKeyValue(
-                $this->retryConnection(fn()=> $this->client->getApi()->getBucket($name)),
+                $this->client->getApi()->getBucket($name)
             );
         }
 
         return $this->buckets[$name];
     }
 
+    /**
+     * @param string $streamName
+     * @return object
+     * @throws Throwable
+     */
     public function getStreamInfo(string $streamName): object
     {
         return $this->retryConnection(fn()=> $this->client->getApi()->getStream($streamName)->info());
     }
 
+    /**
+     * @param string $streamName
+     * @param string $consumerName
+     * @return object
+     * @throws Throwable
+     */
     public function getConsumerInfo(string $streamName, string $consumerName): object
     {
         return $this->retryConnection(fn()=> $this->client->getApi()->getStream($streamName)->getConsumer($consumerName)->info());

@@ -6,30 +6,38 @@ namespace WsFramework\Process\DefaultProcess\S3UploadProcess;
 
 use JsonException;
 use Workerman\Coroutine;
+use Workerman\Coroutine\Channel;
+use Workerman\Coroutine\WaitGroup;
 use Workerman\Events\Swoole;
 use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
+use WsFramework\Dto\defaultDTO;
 use WsFramework\Dto\StagePayloadDTO;
 use WsFramework\Dto\UseCase\FfmpegJobDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
-use WsFramework\Dto\UseCase\S3DownloadJobDTO;
 use WsFramework\Dto\UseCase\S3UploadJobDTO;
 use WsFramework\Enum\ClaimResult;
 use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Enum\NatsSubject;
+use WsFramework\Enum\Pipeline;
 use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
 use WsFramework\Process\DefaultProcess\BackgroundProcessAbstract;
 use WsFramework\Service\S3\S3ClientService;
 use WsFramework\UseCase\ClaimJobStageUseCase;
 use WsFramework\UseCase\CleanupJobDirectoryUseCase;
+use WsFramework\UseCase\DefineCurrentChannelUseCase;
+use WsFramework\UseCase\DefineCurrentPipelineUseCase;
+use WsFramework\UseCase\GetKVInterfaceUseCase;
 use WsFramework\UseCase\RecoverStuckJobsUseCase;
-use Package\NatsClient\NatsKeyValueInterface;
 use Basis\Nats\Message\Msg;
 use Workerman\Worker;
 use WsFramework\UseCase\ThrowableHandleUseCase;
 
 class S3UploadProcess extends BackgroundProcessAbstract
 {
+    private static S3ClientService $s3Service;
+
     protected static function constructor(): void
     {
     }
@@ -60,8 +68,15 @@ class S3UploadProcess extends BackgroundProcessAbstract
     public static function onWorkerStart(): callable
     {
         return function (Worker $worker) {
-            S3NatsChannel::main();
+            $config = DefaultDTO::createWithDefaultValues();
+            $config->pipeline = Pipeline::S3_UPLOAD;
+            $config->channel = S3NatsChannel::main();
+            DefineCurrentPipelineUseCase::handle($config);
+            DefineCurrentChannelUseCase::handle($config);
+
             KVNatsBucket::main();
+
+            static::$s3Service = new S3ClientService();
 
             static::recoveryJob();
 
@@ -71,15 +86,13 @@ class S3UploadProcess extends BackgroundProcessAbstract
                 $dto = StagePayloadDTO::createFromArray($data);
                 $jobId = $dto->jobId;
 
-                $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
-
-                static::checkFailed($jobId, $kv);
-                static::checkClaimedStart($jobId, $kv);
-                static::executeUpload($jobId, $kv);
+                static::checkFailed($jobId);
+                static::checkClaimedStart($jobId);
+                static::executeUpload($jobId);
             };
 
             Coroutine::create(function () use ($mainCallback) {
-                S3NatsChannel::eventInterface()->on($mainCallback, S3NatsChannel::METHOD_UPLOAD);
+                S3NatsChannel::eventInterface()->on($mainCallback, NatsSubject::S3_UPLOAD->value);
             });
 
             echo "S3UploadProcess consumer started on worker {$worker->id}\n";
@@ -88,13 +101,13 @@ class S3UploadProcess extends BackgroundProcessAbstract
 
     /**
      * @param string $jobId
-     * @param NatsKeyValueInterface $kv
      * @return void
      * @throws JsonException
      * @throws PipelineException
      */
-    private static function checkFailed(string $jobId, NatsKeyValueInterface $kv): void
+    private static function checkFailed(string $jobId): void
     {
+        $kv = GetKVInterfaceUseCase::handle();
         $existing = $kv->get($jobId);
         $jobKVDTO = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
 
@@ -107,17 +120,15 @@ class S3UploadProcess extends BackgroundProcessAbstract
 
     /**
      * @param string $jobId
-     * @param NatsKeyValueInterface $kv
      * @return void
      * @throws JsonException
      * @throws PipelineException
      * @throws UseCaseException
      */
-    private static function checkClaimedStart(string $jobId, NatsKeyValueInterface $kv): void
+    private static function checkClaimedStart(string $jobId): void
     {
         $result = ClaimJobStageUseCase::handle(
             new JobKVDTO(jobId: $jobId),
-            $kv,
             allowedStatuses: [
                 FfmpegJobStatus::S3_UPLOAD_PENDING->value,
                 FfmpegJobStatus::S3_UPLOAD_RESTARTED->value,
@@ -131,15 +142,16 @@ class S3UploadProcess extends BackgroundProcessAbstract
             throw $ex;
         }
     }
+
     /**
      * @param string $jobId
-     * @param NatsKeyValueInterface $kv
      * @return void
      * @throws JsonException
      * @throws UseCaseException
      */
-    private static function executeUpload(string $jobId, NatsKeyValueInterface $kv): void
+    private static function executeUpload(string $jobId): void
     {
+        $kv = GetKVInterfaceUseCase::handle();
         $existing = $kv->get($jobId);
         $jobData = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
 
@@ -174,19 +186,43 @@ class S3UploadProcess extends BackgroundProcessAbstract
                 );
             }
 
-            $s3Service = new S3ClientService();
+            $concurrency = (int) ($_ENV['S3_UPLOAD_CONCURRENCY']);
+            $channel = new Channel($concurrency);
+            $wg = new WaitGroup();
+            $errCh = new Channel(1);
 
             foreach ($hlsFiles as $file) {
-                $ext = pathinfo($file, PATHINFO_EXTENSION);
-                $contentType = match ($ext) {
-                    'm3u8' => 'application/vnd.apple.mpegurl',
-                    'ts' => 'video/MP2T',
-                    default => 'application/octet-stream',
-                };
-                $s3Service->uploadFile($file, $bucket, $s3Prefix . basename($file), $contentType);
+                $channel->push(true);
+                $wg->add();
+                Coroutine::create(function () use ($file, $bucket, $s3Prefix, $channel, $wg, $errCh) {
+                    try {
+                        if ($errCh->length() > 0) {
+                            return;
+                        }
+                        $ext = pathinfo($file, PATHINFO_EXTENSION);
+                        $contentType = match ($ext) {
+                            'm3u8' => 'application/vnd.apple.mpegurl',
+                            'ts' => 'video/MP2T',
+                            default => 'application/octet-stream',
+                        };
+                        static::$s3Service->uploadFile($file, $bucket, $s3Prefix . basename($file), $contentType);
+                    } catch (\Throwable $e) {
+                        if ($errCh->length() === 0) {
+                            $errCh->push($e);
+                        }
+                    } finally {
+                        $channel->pop();
+                        $wg->done();
+                    }
+                });
+            }
+            $wg->wait();
+
+            if ($errCh->length() > 0) {
+                throw $errCh->pop();
             }
 
-            static::kvMerge($kv, new JobKVDTO(
+            static::kvMerge(new JobKVDTO(
                 jobId: $jobId,
                 status: FfmpegJobStatus::COMPLETED->value,
                 finishedAt: date('c'),
@@ -205,7 +241,7 @@ class S3UploadProcess extends BackgroundProcessAbstract
             echo "S3UploadProcess: error for job {$jobId}: {$e->getMessage()}\n";
             echo "S3UploadProcess: job {$jobId} retry {$jobData->retryCount}/{$jobData->maxRetries}\n";
 
-            ThrowableHandleUseCase::handle($jobData, $kv,$e);
+            ThrowableHandleUseCase::handle($jobData, $e);
         }
     }
 
@@ -217,9 +253,7 @@ class S3UploadProcess extends BackgroundProcessAbstract
      */
     private static function recoveryJob(): void
     {
-        $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
         RecoverStuckJobsUseCase::handle(
-            $kv,
             [FfmpegJobStatus::S3_UPLOADING, FfmpegJobStatus::S3_UPLOAD_PENDING, FfmpegJobStatus::S3_UPLOAD_RESTARTED],
         );
     }

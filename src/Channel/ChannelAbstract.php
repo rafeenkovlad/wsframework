@@ -77,7 +77,7 @@ abstract class ChannelAbstract implements SelectEventInterface
      */
     public static function getStatus(): bool
     {
-        return static::$channels[static::channelName()]->status;
+        return (static::$channels[static::channelName()] ?? null)?->status ?? false;
     }
 
     /**

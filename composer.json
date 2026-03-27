@@ -17,7 +17,7 @@
         ]
     },
     "require": {
-        "php": "^8.2",
+        "php": "^8.4",
         "workerman/workerman": "^5.1.8",
         "workerman/channel": "^1.2.2",
         "workerman/globaldata": "^1.0",
@@ -33,7 +33,8 @@
         "package/nats-client": "*",
         "aminyazdanpanah/php-ffmpeg-video-streaming": "^1.3.0",
         "aws/aws-sdk-php": "^3.0",
-        "hyperf/guzzle": "^3.1"
+        "hyperf/guzzle": "^3.1",
+        "basis-company/nats": "^1.1.2"
     },
     "minimum-stability": "dev",
     "prefer-stable": true

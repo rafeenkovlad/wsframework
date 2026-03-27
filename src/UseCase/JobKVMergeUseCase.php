@@ -4,28 +4,13 @@ declare(strict_types=1);
 
 namespace WsFramework\UseCase;
 
-use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Dto\DataTransferObject;
 use WsFramework\Dto\UseCase\JobKVDTO;
+use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Exception\UseCaseException;
 
 class JobKVMergeUseCase extends AbstractUseCase
 {
-    private const RESTART_STATUSES = [
-        'pending',
-        's3_download_pending',
-        's3_upload_pending',
-        's3_download_restarted',
-        'processing_restarted',
-        's3_upload_restarted',
-    ];
-
-    private const MASTER_FIELDS = [
-        'jobId', 'status', 's3Key', 's3Bucket', 'outputS3Prefix',
-        'retryCount', 'maxRetries', 'priority',
-        'startedAt', 'finishedAt', 'createdAt', 'updatedAt',
-    ];
-
     private const CHILD_KEYS = ['s3Download', 'ffmpegJob', 's3Upload', 'cleanup'];
 
     /**
@@ -37,30 +22,41 @@ class JobKVMergeUseCase extends AbstractUseCase
      */
     public static function handle(DataTransferObject $DTO, ...$args): int
     {
-        if (empty($args)) {
-            throw new UseCaseException('No kv provided');
+        foreach ($args as $arg) {
+            if ($arg instanceof \Throwable) {
+                ThrowableHandleUseCase::handle($DTO, $arg);
+            }
         }
 
-        /** @var NatsKeyValueInterface $kv */
-        [$kv] = $args;
-        return static::create($DTO)->merge($kv);
+        return static::create($DTO)->merge();
     }
 
-    private function merge(?NatsKeyValueInterface $kv): int
+    private function merge(): int
     {
+        $kv = GetKVInterfaceUseCase::handle();
         /** @var JobKVDTO $dto */
         $dto = $this->DTO;
 
         $existing = $kv->get($dto->jobId);
-        $current = $existing
-            ? (json_decode($existing, true, 512, JSON_THROW_ON_ERROR) ?: [])
+        if ($existing === null) {
+            return $kv->put($dto->jobId, $dto->jsonEncode());
+        }
+
+        $entry = $kv->getEntry($dto->jobId);
+
+        $current = $entry?->value
+            ? (json_decode($entry->value, true, 512, JSON_THROW_ON_ERROR) ?: [])
             : [];
 
-        $update = $this->buildMasterUpdate();
+        $update = array_diff_key(
+            $dto->toArrayWhereNotNull(),
+            array_flip([...self::CHILD_KEYS, 'errors']),
+        );
         $update['updatedAt'] ??= date('c');
 
         // Restart convention
-        if (in_array($dto->status, self::RESTART_STATUSES, true)) {
+        $status = $dto->status ? FfmpegJobStatus::fromString($dto->status) : null;
+        if ($status?->isRestartable()) {
             $current['finishedAt'] = null;
             $current['startedAt'] = null;
         }
@@ -74,7 +70,6 @@ class JobKVMergeUseCase extends AbstractUseCase
         foreach (self::CHILD_KEYS as $child) {
             if ($dto->$child !== null) {
                 $childUpdate = $dto->$child->toArrayWhereNotNull();
-                // Append child errors
                 if (!empty($childUpdate['errors'])) {
                     $childUpdate['errors'] = array_merge(
                         $current[$child]['errors'] ?? [],
@@ -85,24 +80,11 @@ class JobKVMergeUseCase extends AbstractUseCase
             }
         }
 
-        return $kv->put($dto->jobId, json_encode(
+        $encoded = json_encode(
             array_merge($current, $update),
             JSON_THROW_ON_ERROR,
-        ));
-    }
+        );
 
-    private function buildMasterUpdate(): array
-    {
-        /** @var JobKVDTO $dto */
-        $dto = $this->DTO;
-        $update = [];
-
-        foreach (self::MASTER_FIELDS as $field) {
-            if ($dto->$field !== null) {
-                $update[$field] = $dto->$field;
-            }
-        }
-
-        return $update;
+        return $kv->update($dto->jobId, $encoded, $entry->revision);
     }
 }

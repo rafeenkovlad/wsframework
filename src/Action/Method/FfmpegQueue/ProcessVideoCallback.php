@@ -70,12 +70,10 @@ class ProcessVideoCallback extends MethodAbstract
         $jobId = bin2hex(random_bytes(16));
 
         try {
-            $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
-            static::setKVJobStatus($jobId, FfmpegJobStatus::S3_DOWNLOAD_PENDING, $params, $kv);
+            static::setKVJobStatus($jobId, FfmpegJobStatus::S3_DOWNLOAD_PENDING, $params);
 
             DispatchJobByStatusUseCase::handle(
-                JobKVDTO::createFromArray(['jobId' => $jobId, 'status' => FfmpegJobStatus::S3_DOWNLOAD_PENDING->value]),
-                $kv
+                JobKVDTO::createFromArray(['jobId' => $jobId, 'status' => FfmpegJobStatus::S3_DOWNLOAD_PENDING->value])
             );
 
             $status = FfmpegJobStatus::S3_DOWNLOAD_PENDING->value;
@@ -110,7 +108,6 @@ class ProcessVideoCallback extends MethodAbstract
         $error = null
     ): void
     {
-        $kv = KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
         $timestamp = date('c');
         $job = new JobKVDTO(
             jobId: $jobId,
@@ -124,7 +121,7 @@ class ProcessVideoCallback extends MethodAbstract
             errors: $error !== null ? [['message' => $error, 'at' => $timestamp]] : null,
         );
 
-        JobKVMergeUseCase::handle($job, $kv);
+        JobKVMergeUseCase::handle($job);
     }
 
     protected static function getDescription(): string

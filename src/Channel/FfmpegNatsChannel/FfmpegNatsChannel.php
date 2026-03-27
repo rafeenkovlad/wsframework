@@ -6,6 +6,7 @@ namespace WsFramework\Channel\FfmpegNatsChannel;
 
 use WsFramework\Channel\ChannelAbstract;
 use WsFramework\Channel\SelectEventInterface;
+use WsFramework\Enum\NatsSubject;
 use Hyperf\Stringable\Str;
 use Package\NatsClient\NatsClient;
 use Package\NatsClient\NatsKeyValueInterface;
@@ -13,10 +14,6 @@ use WsFramework\Exception\S3\PipelineException;
 
 class FfmpegNatsChannel extends ChannelAbstract
 {
-    private const JOB_STREAM = 'ffmpeg_jobs';
-
-    public const METHOD_JOB = 'ffmpegQueue.addJob';
-
     private array $methodMap = [];
     private NatsClient $natsClient;
 
@@ -48,10 +45,10 @@ class FfmpegNatsChannel extends ChannelAbstract
     {
         return [
             [
-                'method' => self::METHOD_JOB,
-                'stream' => self::JOB_STREAM,
-                'name' => static::getStandardFormatName(self::METHOD_JOB),
-                'subject' => self::METHOD_JOB,
+                'method' => NatsSubject::FFMPEG_JOB->value,
+                'stream' => NatsSubject::FFMPEG_JOB->stream(),
+                'name' => static::getStandardFormatName(NatsSubject::FFMPEG_JOB->value),
+                'subject' => NatsSubject::FFMPEG_JOB->value,
             ],
         ];
     }

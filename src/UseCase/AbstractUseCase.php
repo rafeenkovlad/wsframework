@@ -10,7 +10,7 @@ use WsFramework\Pool\UseCase\PoolUseCase;
 
 abstract class AbstractUseCase
 {
-    private function __construct(protected DataTransferObject $DTO, ...$args)
+    private function __construct(protected ?DataTransferObject $DTO = null, ...$args)
     {
         foreach ($args as $key => $arg) {
             $this->{$key} = $arg;
@@ -18,10 +18,10 @@ abstract class AbstractUseCase
     }
 
     /**
-     * @param DataTransferObject $DTO
+     * @param ?DataTransferObject $DTO
      * @return static
      */
-    protected static function create(DataTransferObject $DTO): static
+    protected static function create(?DataTransferObject $DTO = null): static
     {
         if (! PoolUseCase::getOffset(static::class)) {
             PoolUseCase::addOffset(static::class);

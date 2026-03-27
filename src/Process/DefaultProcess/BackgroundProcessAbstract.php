@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace WsFramework\Process\DefaultProcess;
 
-use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Process\Worker;
 use WsFramework\UseCase\JobKVMergeUseCase;
@@ -68,8 +67,8 @@ abstract class BackgroundProcessAbstract extends DefaultProcessAbstract
         })();
     }
 
-    public static function kvMerge(NatsKeyValueInterface $kv, JobKVDTO $update): void
+    public static function kvMerge(JobKVDTO $update): void
     {
-        JobKVMergeUseCase::handle($update, $kv);
+        JobKVMergeUseCase::handle($update);
     }
 }

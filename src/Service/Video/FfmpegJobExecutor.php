@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace WsFramework\Service\Video;
 
 use JsonException;
-use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Dto\UseCase\FfmpegJobDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\ClaimResult;
@@ -13,8 +12,9 @@ use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Enum\Pipeline;
 use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
-use WsFramework\Process\DefaultProcess\BackgroundProcessAbstract;
 use WsFramework\UseCase\ClaimJobStageUseCase;
+use WsFramework\UseCase\DefineCurrentPipelineUseCase;
+use WsFramework\UseCase\GetKVInterfaceUseCase;
 use WsFramework\UseCase\JobKVMergeUseCase;
 use WsFramework\UseCase\ThrowableHandleUseCase;
 
@@ -23,27 +23,23 @@ readonly class FfmpegJobExecutor
     public function __construct(
         private FfmpegVideoConverter $converter,
         private string $filesDirectory,
-        private NatsKeyValueInterface $kv,
     ) {}
 
     /**
-     * Проверяем стартовый статус пайплайна
      * @param string $jobId
-     * @param NatsKeyValueInterface $kv
      * @return void
      * @throws JsonException
      * @throws PipelineException
      * @throws UseCaseException
      */
-    private function checkClaimedStart(string $jobId, NatsKeyValueInterface $kv): void
+    private function checkClaimedStart(string $jobId): void
     {
         if (!$jobId) {
-            throw new PipelineException('FfmpegJobExecutor', 'missing jobId');
+            throw new PipelineException(DefineCurrentPipelineUseCase::handle()->getName(), 'missing jobId');
         }
 
         $result = ClaimJobStageUseCase::handle(
             new JobKVDTO(jobId: $jobId),
-            $kv,
             allowedStatuses: [
                 FfmpegJobStatus::PENDING->value,
                 FfmpegJobStatus::PROCESSING_RESTARTED->value,
@@ -52,7 +48,7 @@ readonly class FfmpegJobExecutor
         );
 
         if ($result !== ClaimResult::CLAIMED) {
-            $ex = new PipelineException('FfmpegJobExecutor', "job {$jobId} skip — {$result->name}\n");
+            $ex = new PipelineException(DefineCurrentPipelineUseCase::handle()->getName(), "job {$jobId} skip — {$result->name}\n");
             echo $ex->getMessage();
             throw $ex;
         }
@@ -60,13 +56,13 @@ readonly class FfmpegJobExecutor
 
     /**
      * @param string $jobId
-     * @param NatsKeyValueInterface $kv
      * @return void
      * @throws JsonException
      * @throws PipelineException
      */
-    private function checkFailed(string $jobId, NatsKeyValueInterface $kv): void
+    private function checkFailed(string $jobId): void
     {
+        $kv = GetKVInterfaceUseCase::handle();
         $existing = $kv->get($jobId);
         $jobKVDTO = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
 
@@ -87,9 +83,9 @@ readonly class FfmpegJobExecutor
      */
     public function execute(string $jobId): JobKVDTO
     {
-        $kv = $this->kv;
-        $this->checkFailed($jobId, $kv);
-        $this->checkClaimedStart($jobId, $kv);
+        $kv = GetKVInterfaceUseCase::handle();
+        $this->checkFailed($jobId);
+        $this->checkClaimedStart($jobId);
 
         $existing = $kv->get($jobId);
         $jobData = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
@@ -123,15 +119,16 @@ readonly class FfmpegJobExecutor
                 ),
             );
 
-            JobKVMergeUseCase::handle($jobData, $kv);
-
+            JobKVMergeUseCase::handle($jobData);
 
             echo "FfmpegJobExecutor: job {$jobId} converted, ready for s3_upload\n";
 
             return $jobData;
         } catch (\Throwable $e) {
             echo "FfmpegJobExecutor: job {$jobId} retry {$jobData->retryCount}/{$jobData->maxRetries}\n";
-            ThrowableHandleUseCase::handle($jobData, $kv,$e);
+            ThrowableHandleUseCase::handle($jobData, $e);
+
+            return $jobData;
         }
     }
 }

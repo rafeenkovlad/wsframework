@@ -6,7 +6,6 @@ namespace WsFramework\UseCase;
 
 use Basis\Nats\KeyValue\Entry;
 use JsonException;
-use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Exception\S3\PipelineException;
@@ -16,15 +15,15 @@ class RecoverStuckJobsUseCase
 {
 
     /**
-     * @param NatsKeyValueInterface $kv
      * @param array<FfmpegJobStatus, string> $statusMap ['S3_DOWNLOADING']
      * @return void
      * @throws PipelineException
      * @throws JsonException
-     * @throws UseCaseException
+     * @throws UseCaseException|\Throwable
      */
-    public static function handle(NatsKeyValueInterface $kv, array $statusMap): void
+    public static function handle(array $statusMap): void
     {
+        $kv = GetKVInterfaceUseCase::handle();
         $recovered = 0;
         $entries = $kv->getAll();
 
@@ -45,11 +44,9 @@ class RecoverStuckJobsUseCase
 
             JobKVMergeUseCase::handle(
                 new JobKVDTO(jobId: $jobKVDTO->jobId, status: $status->getValue()),
-                $kv,
             );
             DispatchJobByStatusUseCase::handle(
                 $jobKVDTO,
-                $kv,
             );
             $recovered++;
 
@@ -73,7 +70,7 @@ class RecoverStuckJobsUseCase
             => FfmpegJobStatus::S3_UPLOAD_RESTARTED,
             FfmpegJobStatus::PROCESSING, FfmpegJobStatus::PENDING, FfmpegJobStatus::PROCESSING_RESTARTED
             => FfmpegJobStatus::PROCESSING_RESTARTED,
-            default => throw new PipelineException($status->getValue(), 'Recovery is not supported for this status.')
+            default => throw new PipelineException(DefineCurrentPipelineUseCase::handle()->getName(), 'Recovery is not supported for this status.')
         };
     }
 }

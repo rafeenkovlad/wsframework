@@ -25,6 +25,14 @@ enum FfmpegJobStatus: string
     case PROCESSING_RESTARTED  = 'processing_restarted';
     case S3_UPLOAD_RESTARTED   = 's3_upload_restarted';
 
+    public function isRestartable(): bool
+    {
+        return in_array($this, [
+            self::PENDING, self::S3_DOWNLOAD_PENDING, self::S3_UPLOAD_PENDING,
+            self::S3_DOWNLOAD_RESTARTED, self::PROCESSING_RESTARTED, self::S3_UPLOAD_RESTARTED,
+        ]);
+    }
+
     public function pipeline(): Pipeline
     {
         return match ($this) {

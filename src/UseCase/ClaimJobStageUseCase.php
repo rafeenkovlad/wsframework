@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace WsFramework\UseCase;
 
 use JsonException;
-use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\ClaimResult;
 use WsFramework\Exception\UseCaseException;
@@ -23,7 +22,6 @@ class ClaimJobStageUseCase
 {
     /**
      * @param JobKVDTO $dto
-     * @param NatsKeyValueInterface $kv
      * @param string[] $allowedStatuses
      * @param string $activeStatus
      * @return ClaimResult
@@ -31,10 +29,10 @@ class ClaimJobStageUseCase
      */
     public static function handle(
         JobKVDTO $dto,
-        NatsKeyValueInterface $kv,
         array $allowedStatuses,
         string $activeStatus,
     ): ClaimResult {
+        $kv = GetKVInterfaceUseCase::handle();
         $entry = $kv->getEntry($dto->jobId);
         if ($entry === null) {
             throw new UseCaseException("Job not found: {$dto->jobId}");

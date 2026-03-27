@@ -6,6 +6,7 @@ namespace WsFramework\Channel\S3NatsChannel;
 
 use WsFramework\Channel\ChannelAbstract;
 use WsFramework\Channel\SelectEventInterface;
+use WsFramework\Enum\NatsSubject;
 use Hyperf\Stringable\Str;
 use Package\NatsClient\NatsClient;
 use Package\NatsClient\NatsKeyValueInterface;
@@ -13,12 +14,6 @@ use WsFramework\Exception\S3\PipelineException;
 
 class S3NatsChannel extends ChannelAbstract
 {
-    public const METHOD_DOWNLOAD     = 's3Pipeline.download';
-    public const METHOD_UPLOAD       = 's3Pipeline.upload';
-
-    private const DOWNLOAD_STREAM      = 's3_download';
-    private const UPLOAD_STREAM      = 's3_upload';
-
     private array $methodMap = [];
     private NatsClient $natsClient;
 
@@ -47,16 +42,16 @@ class S3NatsChannel extends ChannelAbstract
     {
         return [
             [
-                'method' => self::METHOD_DOWNLOAD,
-                'stream' => self::DOWNLOAD_STREAM,
-                'name' => static::getStandardFormatName(self::METHOD_DOWNLOAD),
-                'subject' => self::METHOD_DOWNLOAD,
+                'method' => NatsSubject::S3_DOWNLOAD->value,
+                'stream' => NatsSubject::S3_DOWNLOAD->stream(),
+                'name' => static::getStandardFormatName(NatsSubject::S3_DOWNLOAD->value),
+                'subject' => NatsSubject::S3_DOWNLOAD->value,
             ],
             [
-                'method' => self::METHOD_UPLOAD,
-                'stream' => self::UPLOAD_STREAM,
-                'name' => static::getStandardFormatName(self::METHOD_UPLOAD),
-                'subject' => self::METHOD_UPLOAD,
+                'method' => NatsSubject::S3_UPLOAD->value,
+                'stream' => NatsSubject::S3_UPLOAD->stream(),
+                'name' => static::getStandardFormatName(NatsSubject::S3_UPLOAD->value),
+                'subject' => NatsSubject::S3_UPLOAD->value,
             ],
         ];
     }

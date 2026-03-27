@@ -16,7 +16,7 @@ class FfmpegVideoConverter implements VideoConverterInterface
         private readonly string $filesDirectory = '/var/www/html/public/files/',
         private readonly int $maxWidth = 720,
         private readonly int $hlsTime = 10,
-        private readonly int $kiloBitrate = 1024,
+        private readonly int $kiloBitrate = 2048,
     ) {
         $this->config = [
             'ffmpeg.binaries' => $_ENV['FFMPEG_BINARY_PATH'] ?? '/usr/local/bin/ffmpeg',
