@@ -266,7 +266,11 @@ class NatsClient
                     ),
                 );
 
-            $stream->create();
+            if ($stream->exists()) {
+                $stream->update();
+            } else {
+                $stream->create();
+            }
         }
     }
 }
