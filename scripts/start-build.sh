@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
-source .env.setup
+source "$(dirname "$0")/_compose.sh"
 cp "./environment/.env.${APP_ENV}" "./.env"
-docker compose -f ./docker-compose-wsframework.yml up --build &
+ensure_vendor
+$COMPOSE_CMD up --build &

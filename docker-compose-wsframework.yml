@@ -17,9 +17,6 @@ services:
     command: -c /etc/nats/nats-server.conf
     volumes:
       - nats_storage:/nats/storage
-    ports:
-      - '4222:4222'
-      - '8222:8222'
     networks:
       srv-queue:
 
@@ -39,8 +36,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2048M
+          cpus: '1'
+          memory: 128M
     build:
       context: ./container/php8.4
       args:
@@ -63,7 +60,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: '3'
           memory: 2048M
     build:
       context: ./container/ffmpeg
@@ -84,7 +81,7 @@ services:
       resources:
         limits:
           cpus: '1'
-          memory: 1024M
+          memory: 2048M
     build:
       context: ./container/php8.4
     volumes:

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
-docker compose -f ./docker-compose-wsframework.yml stop &&
+source "$(dirname "$0")/_compose.sh"
+$COMPOSE_CMD stop &&
 rm -Rf ./tmp/* &&
-docker compose -f ./docker-compose-wsframework.yml up &
+$COMPOSE_CMD up &
