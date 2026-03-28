@@ -191,7 +191,7 @@ class NatsClient
             catch (\Throwable $e) {
                 echo "NATS handler error: {$e->getMessage()}\n";
                 echo "NATS message render:  {$msg->render()}\n";
-                $msg->nack((float)($_ENV['NATS_DELAY_NACK_IN_LOOP'] ?? 5000000));
+                $msg->nack((float)($_ENV['NATS_DELAY_NACK_IN_LOOP'] ?? 3600));
                 Timer::del($timer);
             }
         }
@@ -245,6 +245,11 @@ class NatsClient
     public function getConsumerInfo(string $streamName, string $consumerName): object
     {
         return $this->retryConnection(fn()=> $this->client->getApi()->getStream($streamName)->getConsumer($consumerName)->info());
+    }
+
+    public function purgeStream(string $streamName): void
+    {
+        $this->retryConnection(fn() => $this->client->getApi()->getStream($streamName)->purge());
     }
 
     private function createStream(string $name, string $subject): void

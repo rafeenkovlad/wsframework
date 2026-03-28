@@ -119,6 +119,11 @@ class FfmpegNatsChannel extends ChannelAbstract
         return $this->natsClient->getConsumerInfo($streamName, $consumerName);
     }
 
+    public function purgeStream(string $name): void
+    {
+        $this->natsClient->purgeStream($name);
+    }
+
     private function createMethodMap(): void
     {
         foreach (static::config() as ['method' => $method, 'name' => $name]) {

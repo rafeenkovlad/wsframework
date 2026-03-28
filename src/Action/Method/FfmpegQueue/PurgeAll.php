@@ -8,6 +8,7 @@ use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Dto\MethodDTO;
+use WsFramework\Enum\NatsSubject;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Pool\Http\PoolHttpConnection;
 use WsFramework\UseCase\CleanupJobDirectoryUseCase;
@@ -59,6 +60,10 @@ class PurgeAll extends MethodAbstract
             $kv->purge($entry->key);
             $purged++;
         }
+
+        /** @var FfmpegNatsChannel $ffmpegChannel */
+        $ffmpegChannel = FfmpegNatsChannel::eventInterface();
+        $ffmpegChannel->purgeStream(NatsSubject::FFMPEG_JOB->stream());
 
         return ['purged' => $purged];
     }
