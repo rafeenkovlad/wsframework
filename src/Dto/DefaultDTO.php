@@ -12,7 +12,7 @@ use WsFramework\Enum\Pipeline;
  * @property ChannelAbstract $channel
  */
 #[\AllowDynamicProperties]
-class defaultDTO extends DataTransferObject
+class DefaultDTO extends DataTransferObject
 {
     public function __construct(
     )
