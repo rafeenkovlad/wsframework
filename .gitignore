@@ -23,5 +23,5 @@ tmp/
 public/files/*
 
 #log
-public/workerman.log
+public/*.log
 public/*.status

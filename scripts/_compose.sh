@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source .env.setup
 
-COMPOSE_CMD="docker-compose -f ./docker-compose-wsframework.yml"
+COMPOSE_CMD="docker compose -f ./docker-compose-wsframework.yml"
 if [ "$APP_ENV" = "local" ]; then
   COMPOSE_CMD="$COMPOSE_CMD -f ./docker-compose-wsframework.local.yml"
 fi
