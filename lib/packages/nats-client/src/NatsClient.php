@@ -161,11 +161,12 @@ class NatsClient
      * @param Queue $queue
      * @param callable $callback
      * @return void
+     * @throws Throwable
      */
     public static function on(Consumer $consumer, Queue $queue, callable $callback): void
     {
         /** @var Msg|null $msg */
-        while ($msg = $queue->fetch()) {
+        while ($msg = static::retryConnection(fn() => $queue->fetch())) {
 
             if ($msg->payload->isEmpty()) {
                 if ($msg->replyTo) {
@@ -177,7 +178,7 @@ class NatsClient
             try {
                 $msg->progress();
                 $timer = Timer::add(5, fn() => $msg->progress());
-                static::retryConnection(fn() => call_user_func($callback, $msg));
+                call_user_func($callback, $msg);
                 Timer::del($timer);
                 $msg->ack();
                 echo 'ACK!!!!!!!!!!!!!!!!!!!!!';
