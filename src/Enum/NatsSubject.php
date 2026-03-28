@@ -11,7 +11,7 @@ enum NatsSubject: string
 {
     case S3_DOWNLOAD = 's3Pipeline.download';
     case S3_UPLOAD   = 's3Pipeline.upload';
-    case FFMPEG_JOB  = 'ffmpegQueue.addJob';
+    case FFMPEG_JOB  = 'FfmpegQueue.AddJob';
 
     public function stream(): string
     {

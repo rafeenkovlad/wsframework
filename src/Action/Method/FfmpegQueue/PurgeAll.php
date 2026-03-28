@@ -16,7 +16,7 @@ class PurgeAll extends MethodAbstract
 {
     public static function getMethodName(): string
     {
-        return 'ffmpegQueue.purgeAll';
+        return 'FfmpegQueue.PurgeAll';
     }
 
     public static function getResponseClass(): string

@@ -18,7 +18,7 @@ class GetJobStatus extends MethodAbstract
 
     public static function getMethodName(): string
     {
-        return 'ffmpegQueue.getJobStatus';
+        return 'FfmpegQueue.GetJobStatus';
     }
 
     public static function getResponseClass(): string

@@ -16,7 +16,7 @@ class ListFailedJobs extends MethodAbstract
 {
     public static function getMethodName(): string
     {
-        return 'ffmpegQueue.listFailedJobs';
+        return 'FfmpegQueue.ListFailedJobs';
     }
 
     public static function getResponseClass(): string

@@ -19,7 +19,7 @@ class DeleteJob extends MethodAbstract
     use FfmpegJobIdValidationTrait;
     public static function getMethodName(): string
     {
-        return 'ffmpegQueue.deleteJob';
+        return 'FfmpegQueue.DeleteJob';
     }
 
     public static function getResponseClass(): string

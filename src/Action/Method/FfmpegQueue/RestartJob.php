@@ -21,7 +21,7 @@ class RestartJob extends MethodAbstract
     use FfmpegJobIdValidationTrait;
     public static function getMethodName(): string
     {
-        return 'ffmpegQueue.restartJob';
+        return 'FfmpegQueue.RestartJob';
     }
 
     public static function getResponseClass(): string

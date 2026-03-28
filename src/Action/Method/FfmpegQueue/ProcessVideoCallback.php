@@ -23,7 +23,7 @@ class ProcessVideoCallback extends MethodAbstract
 {
     public static function getMethodName(): string
     {
-        return 'ffmpegQueue.processVideoCallback';
+        return 'FfmpegQueue.ProcessVideoCallback';
     }
 
     public static function getResponseClass(): string

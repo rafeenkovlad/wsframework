@@ -18,7 +18,7 @@ class CancelJob extends MethodAbstract
     use FfmpegJobIdValidationTrait;
     public static function getMethodName(): string
     {
-        return 'ffmpegQueue.cancelJob';
+        return 'FfmpegQueue.CancelJob';
     }
 
     public static function getResponseClass(): string

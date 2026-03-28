@@ -18,7 +18,7 @@ class ListJobs extends MethodAbstract
 {
     public static function getMethodName(): string
     {
-        return 'ffmpegQueue.listJobs';
+        return 'FfmpegQueue.ListJobs';
     }
 
     public static function getResponseClass(): string

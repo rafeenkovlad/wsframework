@@ -17,7 +17,7 @@ class GetQueueStats extends MethodAbstract
 {
     public static function getMethodName(): string
     {
-        return 'ffmpegQueue.getQueueStats';
+        return 'FfmpegQueue.GetQueueStats';
     }
 
     public static function getResponseClass(): string
