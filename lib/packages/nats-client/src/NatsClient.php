@@ -248,27 +248,20 @@ class NatsClient
     private function createStream(string $name, string $subject): void
     {
         if (!array_key_exists($name, $this->streams)) {
-            $this->streams[$name] = $this->retryConnection(fn()=> $this->client->getApi()->getStream($name));
-        }
+            $this->streams[$name] = $this->retryConnection(fn()=>$this->client->getApi()->getStream($name));
+            /** @var Stream $stream */
+            $stream = &$this->streams[$name];
+            $stream
+                ->getConfiguration()
+                ->setRetentionPolicy(RetentionPolicy::WORK_QUEUE)
+                ->setStorageBackend(StorageBackend::FILE)
+                ->setSubjects(
+                    array_unique(
+                        [...$stream->getConfiguration()->getSubjects(), $subject],
+                    ),
+                );
 
-        $stream = &$this->streams[$name];
-        $configuration = $stream
-            ->getConfiguration()
-            ->setRetentionPolicy(RetentionPolicy::WORK_QUEUE)
-            ->setStorageBackend(StorageBackend::FILE);
-
-        $subjects = $configuration->getSubjects();
-        if (!in_array($subject, $subjects, true)) {
-            $configuration->setSubjects(array_values(array_unique([...$subjects, $subject])));
-        }
-
-        if (!$stream->exists()) {
-            $stream->createIfNotExists();
-            return;
-        }
-
-        if (!in_array($subject, $subjects, true)) {
-            $stream->update();
+            $stream->create();
         }
     }
 }
