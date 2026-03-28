@@ -7,7 +7,6 @@ namespace WsFramework\Channel\FfmpegNatsChannel;
 use WsFramework\Channel\ChannelAbstract;
 use WsFramework\Channel\SelectEventInterface;
 use WsFramework\Enum\NatsSubject;
-use Hyperf\Stringable\Str;
 use Package\NatsClient\NatsClient;
 use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Exception\S3\PipelineException;
@@ -47,7 +46,7 @@ class FfmpegNatsChannel extends ChannelAbstract
             [
                 'method' => NatsSubject::FFMPEG_JOB->value,
                 'stream' => NatsSubject::FFMPEG_JOB->stream(),
-                'name' => static::getStandardFormatName(NatsSubject::FFMPEG_JOB->value),
+                'name' => NatsSubject::FFMPEG_JOB->consumer(),
                 'subject' => NatsSubject::FFMPEG_JOB->value,
             ],
         ];
@@ -125,11 +124,6 @@ class FfmpegNatsChannel extends ChannelAbstract
         foreach (static::config() as ['method' => $method, 'name' => $name]) {
             $this->methodMap[$method] = $name;
         }
-    }
-
-    private static function getStandardFormatName(string $value): string
-    {
-        return Str::snake(str_replace('.', '_', $value));
     }
 
     private function getConsumerName(string $methodName): string

@@ -11,6 +11,7 @@ use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Enum\NatsSubject;
 use WsFramework\Pool\Http\PoolHttpConnection;
 
 class GetQueueStats extends MethodAbstract
@@ -104,7 +105,7 @@ class GetQueueStats extends MethodAbstract
         // Consumer info
         $consumerInfo = ['pending' => 0, 'ackFloor' => 0];
         try {
-            $info = $ffmpegChannel->getConsumerInfo('ffmpeg_jobs', 'ffmpeg_queue_add_job');
+            $info = $ffmpegChannel->getConsumerInfo(NatsSubject::FFMPEG_JOB->stream(), NatsSubject::FFMPEG_JOB->consumer());
             $consumerInfo = [
                 'pending' => $info->num_pending ?? 0,
                 'ackFloor' => $info->num_ack_floor ?? $info->ack_floor->stream_seq ?? 0,

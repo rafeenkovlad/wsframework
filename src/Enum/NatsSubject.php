@@ -13,6 +13,15 @@ enum NatsSubject: string
     case S3_UPLOAD   = 's3Pipeline.upload';
     case FFMPEG_JOB  = 'ffmpegQueue.addJob';
 
+    public function consumer(): string
+    {
+        return match ($this) {
+            self::S3_DOWNLOAD => 's3_pipeline_download',
+            self::S3_UPLOAD   => 's3_pipeline_upload',
+            self::FFMPEG_JOB  => 'ffmpeg_queue_add_job',
+        };
+    }
+
     public function stream(): string
     {
         return match ($this) {

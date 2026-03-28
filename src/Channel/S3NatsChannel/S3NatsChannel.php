@@ -7,7 +7,6 @@ namespace WsFramework\Channel\S3NatsChannel;
 use WsFramework\Channel\ChannelAbstract;
 use WsFramework\Channel\SelectEventInterface;
 use WsFramework\Enum\NatsSubject;
-use Hyperf\Stringable\Str;
 use Package\NatsClient\NatsClient;
 use Package\NatsClient\NatsKeyValueInterface;
 use WsFramework\Exception\S3\PipelineException;
@@ -44,13 +43,13 @@ class S3NatsChannel extends ChannelAbstract
             [
                 'method' => NatsSubject::S3_DOWNLOAD->value,
                 'stream' => NatsSubject::S3_DOWNLOAD->stream(),
-                'name' => static::getStandardFormatName(NatsSubject::S3_DOWNLOAD->value),
+                'name' => NatsSubject::S3_DOWNLOAD->consumer(),
                 'subject' => NatsSubject::S3_DOWNLOAD->value,
             ],
             [
                 'method' => NatsSubject::S3_UPLOAD->value,
                 'stream' => NatsSubject::S3_UPLOAD->stream(),
-                'name' => static::getStandardFormatName(NatsSubject::S3_UPLOAD->value),
+                'name' => NatsSubject::S3_UPLOAD->consumer(),
                 'subject' => NatsSubject::S3_UPLOAD->value,
             ],
         ];
@@ -116,11 +115,6 @@ class S3NatsChannel extends ChannelAbstract
         foreach (static::config() as ['method' => $method, 'name' => $name]) {
             $this->methodMap[$method] = $name;
         }
-    }
-
-    private static function getStandardFormatName(string $value): string
-    {
-        return Str::snake(str_replace('.', '_', $value));
     }
 
     private function getConsumerName(string $methodName): string
