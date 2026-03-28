@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Package\NatsClient;
 
+use Basis\Nats\Stream\ConsumerLimits;
 use JsonException;
 use Throwable;
 use Workerman\Timer;
@@ -255,6 +256,10 @@ class NatsClient
                 ->getConfiguration()
                 ->setRetentionPolicy(RetentionPolicy::WORK_QUEUE)
                 ->setStorageBackend(StorageBackend::FILE)
+                ->setConsumerLimits([
+                    ConsumerLimits::MAX_ACK_PENDING => 1000,
+                    ConsumerLimits::INACTIVE_THRESHOLD => 0,
+                ])
                 ->setSubjects(
                     array_unique(
                         [...$stream->getConfiguration()->getSubjects(), $subject],
