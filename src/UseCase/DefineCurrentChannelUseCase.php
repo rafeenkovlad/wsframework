@@ -5,7 +5,7 @@ namespace WsFramework\UseCase;
 use WsFramework\Channel\ChannelAbstract;
 use WsFramework\Channel\SelectEventInterface;
 use WsFramework\Dto\DataTransferObject;
-use WsFramework\Dto\defaultDTO;
+use WsFramework\Dto\DefaultDTO;
 
 class DefineCurrentChannelUseCase extends AbstractUseCase
 {

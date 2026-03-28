@@ -7,7 +7,7 @@ namespace WsFramework\Service\NatsJetstreamService;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
-use WsFramework\Dto\defaultDTO;
+use WsFramework\Dto\DefaultDTO;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Enum\Pipeline;
 use WsFramework\Service\ServiceAbstract;

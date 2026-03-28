@@ -9,7 +9,7 @@ use Workerman\Coroutine;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
-use WsFramework\Dto\defaultDTO;
+use WsFramework\Dto\DefaultDTO;
 use WsFramework\Dto\StagePayloadDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Enum\NatsSubject;

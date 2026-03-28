@@ -10,7 +10,7 @@ use Workerman\Events\Swoole;
 use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
-use WsFramework\Dto\defaultDTO;
+use WsFramework\Dto\DefaultDTO;
 use WsFramework\Dto\StagePayloadDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Dto\UseCase\S3DownloadJobDTO;
