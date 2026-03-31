@@ -7,16 +7,15 @@ namespace WsFramework\Process\DefaultProcess\S3DownloadProcess;
 use JsonException;
 use Workerman\Coroutine;
 use Workerman\Events\Swoole;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
-use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
+use WsFramework\Channel\NatsChannel\NatsChannel;
 use WsFramework\Dto\DefaultDTO;
 use WsFramework\Dto\StagePayloadDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Dto\UseCase\S3DownloadJobDTO;
 use WsFramework\Enum\ClaimResult;
 use WsFramework\Enum\FfmpegJobStatus;
-use WsFramework\Enum\NatsSubject;
+use WsFramework\Enum\NatsSubjectEnum;
 use WsFramework\Enum\Pipeline;
 use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
@@ -66,11 +65,9 @@ class S3DownloadProcess extends BackgroundProcessAbstract
             ini_set('memory_limit', '3072M');
             $config = DefaultDTO::createWithDefaultValues();
             $config->pipeline = Pipeline::S3_DOWNLOAD;
-            $config->channel = S3NatsChannel::main();
+            $config->channel = NatsChannel::main();
             DefineCurrentPipelineUseCase::handle($config);
             DefineCurrentChannelUseCase::handle($config);
-            FfmpegNatsChannel::main();
-
             KVNatsBucket::main();
 
             static::$s3Service = new S3ClientService();
@@ -90,7 +87,9 @@ class S3DownloadProcess extends BackgroundProcessAbstract
             };
 
             Coroutine::create(function () use ($mainCallback) {
-                S3NatsChannel::eventInterface()->on($mainCallback, NatsSubject::S3_DOWNLOAD->value);
+                $subject = NatsSubjectEnum::S3_DOWNLOAD->getValue();
+                NatsChannel::factoryListener($subject)
+                    ->on($mainCallback, $subject);
             });
 
             echo "S3DownloadProcess consumer started on worker {$worker->id}\n";

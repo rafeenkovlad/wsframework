@@ -6,7 +6,8 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
+use WsFramework\Channel\NatsChannel\NatsChannel;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
@@ -53,7 +54,7 @@ class DeleteJob extends MethodAbstract
             return [];
         }
 
-        $kv = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
+        $kv = KVNatsBucket::bucketInterface()->bucket('ffmpeg_jobs_status');
         $existing = $kv->get($jobId);
 
         if (!$existing) {

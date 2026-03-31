@@ -1,15 +1,12 @@
 <?php
 
-declare(strict_types=1);
-
 namespace WsFramework\Channel;
 
-interface SelectEventInterface
+interface SelectBucketInterface
 {
-    public static function getStatus(): bool;
-    public function on(callable $callback, string $method): void;
-    public function publish($data,  string $method): void;
     public function getStreamInfo(string $name): object;
+
     public function getConsumerInfo(string $streamName, string $consumerName): object;
+
     public function purgeStream(string $name): void;
 }

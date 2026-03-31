@@ -6,7 +6,7 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
+use WsFramework\Channel\NatsChannel\NatsChannel;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
@@ -52,7 +52,7 @@ class CancelJob extends MethodAbstract
             return [];
         }
 
-        $kv = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
+        $kv = NatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
         $entry = $kv->getEntry($jobId);
 
         if (!$entry) {

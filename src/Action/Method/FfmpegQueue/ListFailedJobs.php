@@ -6,7 +6,8 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
+use WsFramework\Channel\NatsChannel\NatsChannel;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
@@ -49,7 +50,7 @@ class ListFailedJobs extends MethodAbstract
         $limit = is_array($params) ? (int)($params['limit'] ?? 20) : 20;
         $limit = max(1, min($limit, 200));
 
-        $kv = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
+        $kv = KVNatsBucket::bucketInterface()->bucket('ffmpeg_jobs_status');
         $entries = $kv->getAll();
 
         $jobs = [];

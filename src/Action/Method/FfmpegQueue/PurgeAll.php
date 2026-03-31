@@ -6,10 +6,12 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
+use WsFramework\Channel\NatsChannel\NatsChannel;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Enum\NatsSubject;
 use WsFramework\Dto\UseCase\JobKVDTO;
+use WsFramework\Enum\NatsSubjectEnum;
 use WsFramework\Pool\Http\PoolHttpConnection;
 use WsFramework\UseCase\CleanupJobDirectoryUseCase;
 
@@ -46,7 +48,8 @@ class PurgeAll extends MethodAbstract
 
     protected static function process(int $workerId, int $connectionId, MethodDTO $methodDTO): array
     {
-        $kv = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
+        $bucketInterface = KVNatsBucket::bucketInterface();
+        $kv = $bucketInterface->bucket('ffmpeg_jobs_status');
         $entries = $kv->getAll();
 
         $purged = 0;
@@ -61,9 +64,7 @@ class PurgeAll extends MethodAbstract
             $purged++;
         }
 
-        /** @var FfmpegNatsChannel $ffmpegChannel */
-        $ffmpegChannel = FfmpegNatsChannel::eventInterface();
-        $ffmpegChannel->purgeStream(NatsSubject::FFMPEG_JOB->stream());
+        $bucketInterface->purgeStream(NatsSubjectEnum::FFMPEG_JOB->stream()->getValue());
 
         return ['purged' => $purged];
     }

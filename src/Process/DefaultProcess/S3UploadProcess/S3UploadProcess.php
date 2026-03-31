@@ -10,6 +10,7 @@ use Workerman\Coroutine\Channel;
 use Workerman\Coroutine\WaitGroup;
 use Workerman\Events\Swoole;
 use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
+use WsFramework\Channel\NatsChannel\NatsChannel;
 use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
 use WsFramework\Dto\DefaultDTO;
 use WsFramework\Dto\StagePayloadDTO;
@@ -19,6 +20,7 @@ use WsFramework\Dto\UseCase\S3UploadJobDTO;
 use WsFramework\Enum\ClaimResult;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Enum\NatsSubject;
+use WsFramework\Enum\NatsSubjectEnum;
 use WsFramework\Enum\Pipeline;
 use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
@@ -70,10 +72,9 @@ class S3UploadProcess extends BackgroundProcessAbstract
         return function (Worker $worker) {
             $config = DefaultDTO::createWithDefaultValues();
             $config->pipeline = Pipeline::S3_UPLOAD;
-            $config->channel = S3NatsChannel::main();
+            $config->channel = NatsChannel::main();
             DefineCurrentPipelineUseCase::handle($config);
             DefineCurrentChannelUseCase::handle($config);
-
             KVNatsBucket::main();
 
             static::$s3Service = new S3ClientService();
@@ -92,7 +93,9 @@ class S3UploadProcess extends BackgroundProcessAbstract
             };
 
             Coroutine::create(function () use ($mainCallback) {
-                S3NatsChannel::eventInterface()->on($mainCallback, NatsSubject::S3_UPLOAD->value);
+                $subject = NatsSubjectEnum::S3_UPLOAD->getValue();
+                NatsChannel::factoryListener($subject)
+                    ->on($mainCallback, $subject);
             });
 
             echo "S3UploadProcess consumer started on worker {$worker->id}\n";

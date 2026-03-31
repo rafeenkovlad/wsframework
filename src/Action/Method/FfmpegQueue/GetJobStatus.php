@@ -6,7 +6,7 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Pool\Http\PoolHttpConnection;
@@ -52,7 +52,7 @@ class GetJobStatus extends MethodAbstract
             return [];
         }
 
-        $value = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status')->get($jobId);
+        $value = KVNatsBucket::bucketInterface()->bucket('ffmpeg_jobs_status')->get($jobId);
 
         if (!$value) {
             $methodDTO->response->errors = [['field' => 'jobId', 'message' => 'Job not found']];

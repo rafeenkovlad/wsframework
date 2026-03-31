@@ -26,7 +26,7 @@ class GetKVInterfaceUseCase extends AbstractUseCase
      */
     private function initKVInterface(): static
     {
-        $this->kv ??= KVNatsBucket::eventInterface()->bucket('ffmpeg_jobs_status');
+        $this->kv ??= KVNatsBucket::bucketInterface()->bucket('ffmpeg_jobs_status');
 
         return $this;
     }

@@ -6,7 +6,7 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Dto\ListJobsParamsDTO;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
@@ -62,7 +62,7 @@ class ListJobs extends MethodAbstract
     {
         /** @var ListJobsParamsDTO $params */
         $params = $methodDTO->params;
-        $kv = FfmpegNatsChannel::eventInterface()->bucket('ffmpeg_jobs_status');
+        $kv = KVNatsBucket::bucketInterface()->bucket('ffmpeg_jobs_status');
 
         $entries = $kv->getAll();
         $jobs = [];

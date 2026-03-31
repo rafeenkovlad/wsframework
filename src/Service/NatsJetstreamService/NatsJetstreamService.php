@@ -4,18 +4,15 @@ declare(strict_types=1);
 
 namespace WsFramework\Service\NatsJetstreamService;
 
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
-use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
+use WsFramework\Channel\NatsChannel\NatsChannel;
 use WsFramework\Dto\DefaultDTO;
 use WsFramework\Dto\MethodDTO;
-use WsFramework\Enum\Pipeline;
 use WsFramework\Service\ServiceAbstract;
 use WsFramework\Service\HelpService\TransportStrategyService\TransportStrategyInterface;
 use Workerman\Connection\TcpConnection;
 use Workerman\Worker;
 use WsFramework\UseCase\DefineCurrentChannelUseCase;
-use WsFramework\UseCase\DefineCurrentPipelineUseCase;
 
 class NatsJetstreamService extends ServiceAbstract
 {
@@ -30,9 +27,8 @@ class NatsJetstreamService extends ServiceAbstract
         return function (Worker $worker) {
             // Initialize NATS connection in this worker process
             $config = DefaultDTO::createWithDefaultValues();
-            $config->channel = S3NatsChannel::main();
+            $config->channel = NatsChannel::main();
             DefineCurrentChannelUseCase::handle($config);
-            FfmpegNatsChannel::main();
             KVNatsBucket::main();
 
             echo "NatsJetstreamService started on worker {$worker->id}\n";

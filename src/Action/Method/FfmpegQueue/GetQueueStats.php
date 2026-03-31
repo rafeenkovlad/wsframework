@@ -6,12 +6,14 @@ namespace WsFramework\Action\Method\FfmpegQueue;
 
 use WsFramework\Action\Method\MethodAbstract;
 use WsFramework\Action\Response\Ok;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
-use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
+use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
+use WsFramework\Channel\NatsChannel\NatsChannel;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Enum\NatsStreamEnum;
 use WsFramework\Enum\NatsSubject;
+use WsFramework\Enum\NatsSubjectEnum;
 use WsFramework\Pool\Http\PoolHttpConnection;
 
 class GetQueueStats extends MethodAbstract
@@ -47,13 +49,10 @@ class GetQueueStats extends MethodAbstract
 
     protected static function process(int $workerId, int $connectionId, MethodDTO $methodDTO): array
     {
-        /** @var FfmpegNatsChannel $ffmpegChannel */
-        $ffmpegChannel = FfmpegNatsChannel::eventInterface();
+        /** @var NatsChannel $natsChannel */
+        $natsChannel = NatsChannel::eventInterface();
 
-        /** @var S3NatsChannel $s3Channel */
-        $s3Channel = S3NatsChannel::eventInterface();
-
-        $kv = $ffmpegChannel->bucket('ffmpeg_jobs_status');
+        $kv = KVNatsBucket::bucketInterface()->bucket('ffmpeg_jobs_status');
 
         // Count by status from KV
         $byStatus = [];
@@ -81,14 +80,14 @@ class GetQueueStats extends MethodAbstract
         $streams = [];
 
         $streamMap = [
-            's3Download' => ['channel' => $s3Channel, 'stream' => 's3_download'],
-            'ffmpegJobs' => ['channel' => $ffmpegChannel, 'stream' => 'ffmpeg_jobs'],
-            's3Upload'   => ['channel' => $s3Channel, 'stream' => 's3_upload'],
+            's3Download' => ['stream' => 's3_download'],
+            'ffmpegJobs' => ['stream' => 'ffmpeg_jobs'],
+            's3Upload'   => ['stream' => 's3_upload'],
         ];
 
-        foreach ($streamMap as $key => ['channel' => $channel, 'stream' => $streamName]) {
+        foreach ($streamMap as $key => ['stream' => $streamName]) {
             try {
-                $info = $channel->getStreamInfo($streamName);
+                $info = $natsChannel->getStreamInfo($streamName);
                 $state = $info->state ?? $info;
                 $streams[$key] = [
                     'messages' => $state->messages ?? 0,
@@ -105,7 +104,10 @@ class GetQueueStats extends MethodAbstract
         // Consumer info
         $consumerInfo = ['pending' => 0, 'ackFloor' => 0];
         try {
-            $info = $ffmpegChannel->getConsumerInfo(NatsSubject::FFMPEG_JOB->stream(), NatsSubject::FFMPEG_JOB->consumer());
+            $info = $natsChannel->getConsumerInfo(
+                NatsStreamEnum::FFMPEG_JOB->getValue(),
+                $natsChannel->getConsumerName(NatsSubjectEnum::FFMPEG_JOB->getValue())
+            );
             $consumerInfo = [
                 'pending' => $info->num_pending ?? 0,
                 'ackFloor' => $info->num_ack_floor ?? $info->ack_floor->stream_seq ?? 0,

@@ -5,14 +5,12 @@ declare(strict_types=1);
 namespace WsFramework\Process\DefaultProcess\FfmpegQueueProcess;
 
 use JsonException;
-use Workerman\Coroutine;
-use WsFramework\Channel\FfmpegNatsChannel\FfmpegNatsChannel;
 use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
-use WsFramework\Channel\S3NatsChannel\S3NatsChannel;
+use WsFramework\Channel\NatsChannel\NatsChannel;
 use WsFramework\Dto\DefaultDTO;
 use WsFramework\Dto\StagePayloadDTO;
 use WsFramework\Enum\FfmpegJobStatus;
-use WsFramework\Enum\NatsSubject;
+use WsFramework\Enum\NatsSubjectEnum;
 use WsFramework\Enum\Pipeline;
 use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
@@ -62,11 +60,9 @@ class FfmpegQueueProcess extends BackgroundProcessAbstract
         return function (Worker $worker) {
             $config = DefaultDTO::createWithDefaultValues();
             $config->pipeline = Pipeline::FFMPEG;
-            $config->channel = FfmpegNatsChannel::main();
+            $config->channel = NatsChannel::main();
             DefineCurrentPipelineUseCase::handle($config);
             DefineCurrentChannelUseCase::handle($config);
-            S3NatsChannel::main();
-
             KVNatsBucket::main();
 
             static::recoveryJob();
@@ -86,10 +82,9 @@ class FfmpegQueueProcess extends BackgroundProcessAbstract
                 DispatchJobByStatusUseCase::handle($job);
             };
 
-            Coroutine::create(function () use ($mainCallback) {
-                FfmpegNatsChannel::eventInterface()->on($mainCallback, NatsSubject::FFMPEG_JOB->value);
-
-            });
+            $subject = NatsSubjectEnum::FFMPEG_JOB->getValue();
+            NatsChannel::factoryListener($subject)
+                ->on($mainCallback, $subject);
 
             echo "FfmpegQueueProcess consumer started on worker {$worker->id}\n";
         };

@@ -7,6 +7,7 @@ namespace WsFramework\UseCase;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Enum\NatsSubject;
+use WsFramework\Enum\NatsSubjectEnum;
 
 class DispatchJobByStatusUseCase
 {
@@ -16,21 +17,21 @@ class DispatchJobByStatusUseCase
         echo $jobKVDTO->status;
         echo PHP_EOL;
 
-        $subject = match ($jobKVDTO->status) {
+        $subjectEnum = match ($jobKVDTO->status) {
             FfmpegJobStatus::S3_DOWNLOAD_PENDING->value,
-            FfmpegJobStatus::S3_DOWNLOAD_RESTARTED->value => NatsSubject::S3_DOWNLOAD,
+            FfmpegJobStatus::S3_DOWNLOAD_RESTARTED->value => NatsSubjectEnum::S3_DOWNLOAD,
 
             FfmpegJobStatus::PENDING->value,
-            FfmpegJobStatus::PROCESSING_RESTARTED->value => NatsSubject::FFMPEG_JOB,
+            FfmpegJobStatus::PROCESSING_RESTARTED->value => NatsSubjectEnum::FFMPEG_JOB,
 
             FfmpegJobStatus::S3_UPLOAD_PENDING->value,
-            FfmpegJobStatus::S3_UPLOAD_RESTARTED->value => NatsSubject::S3_UPLOAD,
+            FfmpegJobStatus::S3_UPLOAD_RESTARTED->value => NatsSubjectEnum::S3_UPLOAD,
 
             default => null,
         };
 
-        if ($subject !== null) {
-            $subject->channelClass()::eventInterface()->publish($payload, $subject->value);
+        if ($subjectEnum !== null) {
+            DefineCurrentChannelUseCase::handle()->publish($payload, $subjectEnum->getValue());
         }
     }
 }
