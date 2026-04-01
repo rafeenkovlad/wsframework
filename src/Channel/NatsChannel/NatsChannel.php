@@ -148,12 +148,13 @@ class NatsChannel extends ChannelAbstract
         {
             try {
                 $callback($msg);
+
                 $msg->ack();
             } catch (PipelineException $e) {
-                echo "FfmpegNatsChannel: {$e->getMessage()}\n";
+                echo "NatsChannel: {$e->getMessage()}\n";
                 $msg->ack();
             } catch (\Throwable $e) {
-                echo "FfmpegNatsChannel: unhandled exception: {$e->getMessage()}\n";
+                echo "NatsChannel: unhandled exception: {$e->getMessage()}\n";
                 throw $e;
             }
         };

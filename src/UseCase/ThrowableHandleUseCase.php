@@ -3,11 +3,14 @@
 namespace WsFramework\UseCase;
 
 use WsFramework\Dto\DataTransferObject;
+use WsFramework\Dto\UseCase\BrowserlessJobDTO;
 use WsFramework\Dto\UseCase\FfmpegJobDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
+use WsFramework\Dto\UseCase\KVMergeOptionsDTO;
 use WsFramework\Dto\UseCase\S3DownloadJobDTO;
 use WsFramework\Dto\UseCase\S3UploadJobDTO;
-use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Enum\JobStatusInterface;
+use WsFramework\Enum\JobType;
 use WsFramework\Enum\Pipeline;
 use WsFramework\Exception\S3\PipelineException;
 
@@ -47,51 +50,59 @@ class ThrowableHandleUseCase extends AbstractUseCase
     {
         /** @var JobKVDTO $DTO */
         $DTO = $this->DTO;
-        $pipeline = FfmpegJobStatus::fromString($DTO->status)->pipeline();
+        $jobType = $DTO->resolveJobType();
+        $statusEnum = $jobType->statusClass()::tryFrom($DTO->status);
+        $pipeline = $statusEnum?->pipeline() ?? Pipeline::S3_UPLOAD;
 
-        $status = null;
-        $errorDTO = null;
+        $status = $this->mayByFailed($jobType, $pipeline) ?? $jobType->restartedStatus($pipeline);
+
         $errorMessage = [['message' => $e->getMessage(), 'at' => date('c')]];
-        if ($pipeline === Pipeline::S3_DOWNLOAD) {
-            $status = $this->mayByFailed($pipeline) ?? FfmpegJobStatus::S3_DOWNLOAD_RESTARTED;
-            $errorDTO = new S3DownloadJobDTO(errors: $errorMessage);
-        } elseif ($pipeline === Pipeline::FFMPEG) {
-            $status = $this->mayByFailed($pipeline) ?? FfmpegJobStatus::PROCESSING_RESTARTED;
-            $errorDTO = new FfmpegJobDTO(errors: $errorMessage);
-        } elseif ($pipeline === Pipeline::S3_UPLOAD) {
-            $status = $this->mayByFailed($pipeline)  ?? FfmpegJobStatus::S3_UPLOAD_RESTARTED;
-            $errorDTO = new S3UploadJobDTO(errors: $errorMessage);
-        }
+        $errorDTO = match ($pipeline) {
+            Pipeline::S3_DOWNLOAD => new S3DownloadJobDTO(errors: $errorMessage),
+            Pipeline::FFMPEG => new FfmpegJobDTO(errors: $errorMessage),
+            Pipeline::S3_UPLOAD => new S3UploadJobDTO(errors: $errorMessage),
+            Pipeline::BROWSERLESS => new BrowserlessJobDTO(errors: $errorMessage),
+        };
+
+        $childKey = match ($pipeline) {
+            Pipeline::BROWSERLESS => 'browserlessJob',
+            Pipeline::FFMPEG => 'ffmpegJob',
+            Pipeline::S3_DOWNLOAD => 's3Download',
+            Pipeline::S3_UPLOAD => 's3Upload',
+        };
+
+        $mergeDTO = new JobKVDTO(
+            jobId: $DTO->jobId,
+            status: $status->getValue(),
+            retryCount: ($DTO->retryCount ?? 0) + 1,
+            finishedAt: date('c'),
+            s3Download: $childKey === 's3Download' ? $errorDTO : null,
+            ffmpegJob: $childKey === 'ffmpegJob' ? $errorDTO : null,
+            s3Upload: $childKey === 's3Upload' ? $errorDTO : null,
+            browserlessJob: $childKey === 'browserlessJob' ? $errorDTO : null,
+        );
 
         JobKVMergeUseCase::handle(
-            new JobKVDTO(
-                jobId: $DTO->jobId,
-                status: $status?->getName(),
-                retryCount: $DTO->retryCount + 1,
-                finishedAt: date('c'),
-                s3Download: $errorDTO,
-            ),
+            $mergeDTO,
+            KVMergeOptionsDTO::createFromArray([
+                'jobType' => $jobType,
+            ]),
         );
 
         $this->mayBePipelineException($pipeline, $e);
     }
 
     /**
+     * @param JobType $jobType
      * @param Pipeline $pipeline
-     * @return FfmpegJobStatus|null
+     * @return JobStatusInterface|null
      */
-    private function mayByFailed(Pipeline $pipeline): ?FfmpegJobStatus
+    private function mayByFailed(JobType $jobType, Pipeline $pipeline): ?JobStatusInterface
     {
         /** @var JobKVDTO $DTO */
         $DTO = $this->DTO;
-        if ($DTO->maxRetries <= $DTO->retryCount + 1) {
-            if ($pipeline === Pipeline::S3_DOWNLOAD) {
-                return FfmpegJobStatus::S3_DOWNLOAD_FAILED;
-            } elseif ($pipeline === Pipeline::FFMPEG) {
-                return FfmpegJobStatus::FAILED;
-            } elseif ($pipeline === Pipeline::S3_UPLOAD) {
-                return FfmpegJobStatus::S3_UPLOAD_FAILED;
-            }
+        if (($DTO->maxRetries ?? 0) <= ($DTO->retryCount ?? 0) + 1) {
+            return $jobType->failedStatus($pipeline);
         }
 
         return null;
@@ -108,7 +119,7 @@ class ThrowableHandleUseCase extends AbstractUseCase
     {
         /** @var JobKVDTO $DTO */
         $DTO = $this->DTO;
-        if ($DTO->maxRetries <= $DTO->retryCount + 1) {
+        if (($DTO->maxRetries ?? 0) <= ($DTO->retryCount ?? 0) + 1) {
             throw new PipelineException($pipeline->getName(), $e->getMessage());
         }
 

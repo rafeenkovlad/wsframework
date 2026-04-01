@@ -14,4 +14,5 @@ enum NatsStreamEnum: string
     case S3_DOWNLOAD = 's3_download';
     case S3_UPLOAD = 's3_upload';
     case FFMPEG_JOB = 'ffmpeg_jobs';
+    case BROWSERLESS_JOB = 'browserless_jobs';
 }

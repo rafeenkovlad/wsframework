@@ -19,7 +19,7 @@ Worker::$pidFile = HOME . '/tmp/workerman-ffmpeg.pid';
 
 ENV::init();
 
-$ffmpegConsumer = new FfmpegQueueProcess();
-$ffmpegConsumer->init();
+$ffmpegProcess = new FfmpegQueueProcess();
+$ffmpegProcess->init();
 
 Worker::runAll();

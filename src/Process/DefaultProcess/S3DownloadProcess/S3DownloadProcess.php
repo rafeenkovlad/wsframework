@@ -15,6 +15,7 @@ use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Dto\UseCase\S3DownloadJobDTO;
 use WsFramework\Enum\ClaimResult;
 use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Enum\JobType;
 use WsFramework\Enum\NatsSubjectEnum;
 use WsFramework\Enum\Pipeline;
 use WsFramework\Exception\S3\PipelineException;
@@ -25,7 +26,6 @@ use WsFramework\UseCase\ClaimJobStageUseCase;
 use WsFramework\UseCase\DefineCurrentChannelUseCase;
 use WsFramework\UseCase\DefineCurrentPipelineUseCase;
 use WsFramework\UseCase\DispatchJobByStatusUseCase;
-use WsFramework\UseCase\GetKVInterfaceUseCase;
 use WsFramework\UseCase\RecoverStuckJobsUseCase;
 use Basis\Nats\Message\Msg;
 use Workerman\Worker;
@@ -143,7 +143,7 @@ class S3DownloadProcess extends BackgroundProcessAbstract
      */
     private static function checkFailed(string $jobId): void
     {
-        $kv = GetKVInterfaceUseCase::handle();
+        $kv = JobType::FFMPEG->kvBucket();
         $existing = $kv->get($jobId);
         $jobKVDTO = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
 
@@ -162,7 +162,7 @@ class S3DownloadProcess extends BackgroundProcessAbstract
      */
     private static function executeDownload(string $jobId): JobKVDTO
     {
-        $kv = GetKVInterfaceUseCase::handle();
+        $kv = JobType::FFMPEG->kvBucket();
         $existing = $kv->get($jobId);
         $jobKVDTO = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
 

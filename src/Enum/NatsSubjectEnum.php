@@ -13,6 +13,7 @@ enum NatsSubjectEnum: string
     case S3_DOWNLOAD = 's3Pipeline.download';
     case S3_UPLOAD   = 's3Pipeline.upload';
     case FFMPEG_JOB  = 'ffmpegQueue.addJob';
+    case BROWSERLESS_JOB = 'browserlessQueue.addJob';
 
     public function stream(): NatsStreamEnum
     {
@@ -20,6 +21,7 @@ enum NatsSubjectEnum: string
             self::S3_DOWNLOAD => NatsStreamEnum::S3_DOWNLOAD,
             self::S3_UPLOAD   => NatsStreamEnum::S3_UPLOAD,
             self::FFMPEG_JOB  => NatsStreamEnum::FFMPEG_JOB,
+            self::BROWSERLESS_JOB => NatsStreamEnum::BROWSERLESS_JOB,
         };
     }
 

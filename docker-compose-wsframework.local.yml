@@ -3,3 +3,7 @@ services:
     ports:
       - '4222:4222'
       - '8222:8222'
+  browserless:
+    ports:
+      - "3000:3000"
+      - "9222:9222"   # Chrome DevTools for warmup sessions

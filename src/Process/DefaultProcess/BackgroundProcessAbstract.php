@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace WsFramework\Process\DefaultProcess;
 
 use WsFramework\Dto\UseCase\JobKVDTO;
+use WsFramework\Dto\UseCase\KVMergeOptionsDTO;
+use WsFramework\Enum\JobType;
 use WsFramework\Process\Worker;
 use WsFramework\UseCase\JobKVMergeUseCase;
 
@@ -67,8 +69,13 @@ abstract class BackgroundProcessAbstract extends DefaultProcessAbstract
         })();
     }
 
-    public static function kvMerge(JobKVDTO $update): void
+    public static function kvMerge(JobKVDTO $update, ?JobType $jobType = null): void
     {
-        JobKVMergeUseCase::handle($update);
+        JobKVMergeUseCase::handle(
+            $update,
+            KVMergeOptionsDTO::createFromArray(
+                ['jobType' => $jobType]
+            )
+        );
     }
 }

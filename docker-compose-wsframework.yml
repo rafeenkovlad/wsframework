@@ -18,17 +18,6 @@ services:
     networks:
       srv-queue:
 
-  nats-box:
-    container_name: container_natsbox
-    image: natsio/nats-box:latest
-    command: sh -c "sleep infinity"
-    environment:
-      NATS_URL: nats://nats:4222
-    networks:
-      srv-queue:
-    depends_on:
-      - nats
-
   wsframework:
     container_name: container_wsframework
     deploy:
@@ -87,6 +76,28 @@ services:
     networks:
       srv-queue:
     command: ${S3_WORKER_COMMAND}
+    env_file:
+      - ./.env
+    depends_on:
+      - nats
+
+  browserless:
+    container_name: container_browserless_worker
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048M
+    build:
+      context: ./container/browserless
+    volumes:
+      - ./:/var/www/html
+    environment:
+      - MAX_CONCURRENT_SESSIONS=${BROWSERLESS_MAX_CONCURRENT_SESSIONS:-5}
+      - CONNECTION_TIMEOUT=120000
+    networks:
+      srv-queue:
+    command: ${BROWSERLESS_WORKER_COMMAND}
     env_file:
       - ./.env
     depends_on:

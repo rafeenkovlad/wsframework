@@ -9,16 +9,16 @@ use WsFramework\Action\Response\Ok;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Enum\JobType;
 use WsFramework\Process\DefaultProcess\BackgroundProcessAbstract;
 use WsFramework\Pool\Http\PoolHttpConnection;
-use WsFramework\Trait\FfmpegJobIdValidationTrait;
+use WsFramework\Trait\JobIdValidationTrait;
 use WsFramework\UseCase\DispatchJobByStatusUseCase;
-use WsFramework\UseCase\GetKVInterfaceUseCase;
 use WsFramework\UseCase\JobKVMergeUseCase;
 
 class RestartJob extends MethodAbstract
 {
-    use FfmpegJobIdValidationTrait;
+    use JobIdValidationTrait;
     public static function getMethodName(): string
     {
         return 'FfmpegQueue.RestartJob';
@@ -55,7 +55,7 @@ class RestartJob extends MethodAbstract
             return [];
         }
 
-        $kv = GetKVInterfaceUseCase::handle();
+        $kv = JobType::FFMPEG->kvBucket();
         $existing = $kv->get($jobId);
 
         if (!$existing) {

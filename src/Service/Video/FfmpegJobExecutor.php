@@ -9,12 +9,12 @@ use WsFramework\Dto\UseCase\FfmpegJobDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\ClaimResult;
 use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Enum\JobType;
 use WsFramework\Enum\Pipeline;
 use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
 use WsFramework\UseCase\ClaimJobStageUseCase;
 use WsFramework\UseCase\DefineCurrentPipelineUseCase;
-use WsFramework\UseCase\GetKVInterfaceUseCase;
 use WsFramework\UseCase\JobKVMergeUseCase;
 use WsFramework\UseCase\ThrowableHandleUseCase;
 
@@ -62,7 +62,7 @@ readonly class FfmpegJobExecutor
      */
     private function checkFailed(string $jobId): void
     {
-        $kv = GetKVInterfaceUseCase::handle();
+        $kv = JobType::FFMPEG->kvBucket();
         $existing = $kv->get($jobId);
         $jobKVDTO = JobKVDTO::createFromArray(json_decode($existing, true, 512, JSON_THROW_ON_ERROR));
 
@@ -83,7 +83,7 @@ readonly class FfmpegJobExecutor
      */
     public function execute(string $jobId): JobKVDTO
     {
-        $kv = GetKVInterfaceUseCase::handle();
+        $kv = JobType::FFMPEG->kvBucket();
         $this->checkFailed($jobId);
         $this->checkClaimedStart($jobId);
 

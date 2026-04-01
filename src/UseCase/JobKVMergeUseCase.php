@@ -6,12 +6,14 @@ namespace WsFramework\UseCase;
 
 use WsFramework\Dto\DataTransferObject;
 use WsFramework\Dto\UseCase\JobKVDTO;
-use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Dto\UseCase\KVMergeOptionsDTO;
+use WsFramework\Enum\JobStatusInterface;
+use WsFramework\Enum\JobType;
 use WsFramework\Exception\UseCaseException;
 
 class JobKVMergeUseCase extends AbstractUseCase
 {
-    private const CHILD_KEYS = ['s3Download', 'ffmpegJob', 's3Upload', 'cleanup'];
+    private const CHILD_KEYS = ['s3Download', 's3Upload', 'cleanup'];
 
     /**
      * @param JobKVDTO $DTO
@@ -23,17 +25,30 @@ class JobKVMergeUseCase extends AbstractUseCase
     public static function handle(DataTransferObject $DTO, ...$args): int
     {
         foreach ($args as $arg) {
-            if ($arg instanceof \Throwable) {
-                ThrowableHandleUseCase::handle($DTO, $arg);
+            if ($arg instanceof KVMergeOptionsDTO) {
+                $optionsDTO = $arg;
             }
         }
 
-        return static::create($DTO)->merge();
+        $optionsDTO ??= KVMergeOptionsDTO::createWithDefaultValues();
+        if ($optionsDTO->throwable) {
+            ThrowableHandleUseCase::handle($DTO, $optionsDTO->throwable);
+        }
+        $jobType = $optionsDTO->jobType ?? JobType::FFMPEG;
+
+        return static::create($DTO)->merge($jobType);
     }
 
-    private function merge(): int
+    /**
+     * @param JobType $jobType
+     * @return int
+     * @throws \JsonException
+     * @throws \Throwable
+     */
+    private function merge(JobType $jobType): int
     {
-        $kv = GetKVInterfaceUseCase::handle();
+        $kv = $jobType->kvBucket();
+        $jobStatusEnumClass = $jobType->statusClass();
         /** @var JobKVDTO $dto */
         $dto = $this->DTO;
 
@@ -50,12 +65,13 @@ class JobKVMergeUseCase extends AbstractUseCase
 
         $update = array_diff_key(
             $dto->toArrayWhereNotNull(),
-            array_flip([...self::CHILD_KEYS, 'errors']),
+            array_flip([...self::CHILD_KEYS, ...JobType::allChildKeys(), 'errors']),
         );
         $update['updatedAt'] ??= date('c');
 
         // Restart convention
-        $status = $dto->status ? FfmpegJobStatus::fromString($dto->status) : null;
+        /** @var JobStatusInterface|null $status */
+        $status = $dto->status ? $jobStatusEnumClass::tryFrom($dto->status) : null;
         if ($status?->isRestartable()) {
             $current['finishedAt'] = null;
             $current['startedAt'] = null;
@@ -67,7 +83,8 @@ class JobKVMergeUseCase extends AbstractUseCase
         }
 
         // Merge child DTOs
-        foreach (self::CHILD_KEYS as $child) {
+        $allChildKeys = [...self::CHILD_KEYS, ...JobType::allChildKeys()];
+        foreach ($allChildKeys as $child) {
             if ($dto->$child !== null) {
                 $childUpdate = $dto->$child->toArrayWhereNotNull();
                 if (!empty($childUpdate['errors'])) {

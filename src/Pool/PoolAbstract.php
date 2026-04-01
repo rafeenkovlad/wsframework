@@ -72,7 +72,7 @@ abstract class PoolAbstract
     /**
      * @return $this|null
      */
-    public static function current(): ?DataTransferObject
+    public static function current(): mixed
     {
         if (static::isNotExistsCollectionName()) {
             return null;
@@ -129,7 +129,7 @@ abstract class PoolAbstract
      * @param int|string $offset
      * @return $this|null
      */
-    public static function getOffset(int|string $offset): ?DataTransferObject
+    public static function getOffset(int|string $offset): mixed
     {
         if (static::isNotExistsCollectionName()) {
             return null;
@@ -152,14 +152,19 @@ abstract class PoolAbstract
     }
 
     /**
-     * @return string
+     * @return ?string
      */
-    abstract protected static function getClassDTO(): string;
+    abstract protected static function getClassDTO(): ?string;
 
-    protected static function createDTO(): DataTransferObject
+    protected static function createDTO(): ?DataTransferObject
     {
-        /** @var DataTransferObject $classDTO */
+        /** @var DataTransferObject|null $classDTO */
         $classDTO = static::getClassDTO();
+
+        if (is_null($classDTO)) {
+            return null;
+        }
+
         return $classDTO::createFromArray([]);
     }
 }

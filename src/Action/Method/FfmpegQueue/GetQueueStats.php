@@ -12,7 +12,6 @@ use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Enum\NatsStreamEnum;
-use WsFramework\Enum\NatsSubject;
 use WsFramework\Enum\NatsSubjectEnum;
 use WsFramework\Pool\Http\PoolHttpConnection;
 

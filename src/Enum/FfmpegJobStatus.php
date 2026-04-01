@@ -6,7 +6,7 @@ namespace WsFramework\Enum;
 
 use WsFramework\Trait\EnumTrait;
 
-enum FfmpegJobStatus: string
+enum FfmpegJobStatus: string implements JobStatusInterface
 {
     use EnumTrait;
 

@@ -6,7 +6,7 @@ namespace WsFramework\Trait;
 
 use WsFramework\Dto\MethodDTO;
 
-trait FfmpegJobIdValidationTrait
+trait JobIdValidationTrait
 {
     protected static function extractJobId(MethodDTO $methodDTO): ?string
     {

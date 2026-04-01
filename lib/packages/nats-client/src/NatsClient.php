@@ -255,6 +255,7 @@ class NatsClient
     {
         if (!array_key_exists($name, $this->streams)) {
             $stream = $this->client->getApi()->getStream($name);
+            $this->streams[$name] = $stream;
             $subjects = array_values(
                 array_unique([...$stream->getConfiguration()->getSubjects(), ...$subjects]),
             );

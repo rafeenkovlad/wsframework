@@ -22,6 +22,10 @@ tmp/
 #files
 public/files/*
 
+# Browserless storage
+storage/profiles/
+storage/cookies/
+
 #log
 public/*.log
 public/*.status

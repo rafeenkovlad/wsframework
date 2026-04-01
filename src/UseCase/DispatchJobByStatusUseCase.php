@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace WsFramework\UseCase;
 
 use WsFramework\Dto\UseCase\JobKVDTO;
+use WsFramework\Enum\BrowserlessJobStatus;
 use WsFramework\Enum\FfmpegJobStatus;
-use WsFramework\Enum\NatsSubject;
 use WsFramework\Enum\NatsSubjectEnum;
 
 class DispatchJobByStatusUseCase
@@ -26,6 +26,12 @@ class DispatchJobByStatusUseCase
 
             FfmpegJobStatus::S3_UPLOAD_PENDING->value,
             FfmpegJobStatus::S3_UPLOAD_RESTARTED->value => NatsSubjectEnum::S3_UPLOAD,
+
+            BrowserlessJobStatus::BROWSERLESS_PENDING->value,
+            BrowserlessJobStatus::BROWSERLESS_PROCESSING_RESTARTED->value => NatsSubjectEnum::BROWSERLESS_JOB,
+
+            BrowserlessJobStatus::BROWSERLESS_S3_UPLOAD_PENDING->value,
+            BrowserlessJobStatus::BROWSERLESS_S3_UPLOAD_RESTARTED->value => NatsSubjectEnum::S3_UPLOAD,
 
             default => null,
         };

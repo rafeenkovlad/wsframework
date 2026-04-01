@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace WsFramework\Dto\UseCase;
 
 use WsFramework\Dto\DataTransferObject;
+use WsFramework\Enum\JobType;
 
 class JobKVDTO extends DataTransferObject
 {
@@ -26,6 +27,7 @@ class JobKVDTO extends DataTransferObject
         public readonly ?FfmpegJobDTO     $ffmpegJob = null,
         public readonly ?S3UploadJobDTO   $s3Upload = null,
         public readonly ?CleanupJobDTO    $cleanup = null,
+        public readonly ?BrowserlessJobDTO $browserlessJob = null,
     ) {
     }
 
@@ -36,6 +38,7 @@ class JobKVDTO extends DataTransferObject
             'ffmpegJob'  => FfmpegJobDTO::class,
             's3Upload'   => S3UploadJobDTO::class,
             'cleanup'    => CleanupJobDTO::class,
+            'browserlessJob' => BrowserlessJobDTO::class,
         ];
     }
 
@@ -47,5 +50,14 @@ class JobKVDTO extends DataTransferObject
     protected static function getDefaultValues(): array
     {
         return ['jobId' => 'undefined'];
+    }
+
+    public function resolveJobType(): JobType
+    {
+        if ($this->browserlessJob !== null) {
+            return JobType::BROWSERLESS;
+        }
+
+        return JobType::FFMPEG;
     }
 }

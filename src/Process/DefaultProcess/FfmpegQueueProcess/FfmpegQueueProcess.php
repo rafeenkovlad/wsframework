@@ -83,8 +83,13 @@ class FfmpegQueueProcess extends BackgroundProcessAbstract
             };
 
             $subject = NatsSubjectEnum::FFMPEG_JOB->getValue();
-            NatsChannel::factoryListener($subject)
-                ->on($mainCallback, $subject);
+            try {
+                NatsChannel::factoryListener($subject)
+                    ->on($mainCallback, $subject);
+            } finally {
+                exec('php ' . HOME . '/public/ffmpeg-worker.php reload');
+                echo "Channel with subject: " . $subject . " not alive. Process reloading...\n";
+            }
 
             echo "FfmpegQueueProcess consumer started on worker {$worker->id}\n";
         };

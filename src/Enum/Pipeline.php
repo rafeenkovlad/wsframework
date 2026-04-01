@@ -12,4 +12,5 @@ enum Pipeline: string
     case S3_DOWNLOAD = 's3_download';
     case FFMPEG      = 'ffmpeg';
     case S3_UPLOAD   = 's3_upload';
+    case BROWSERLESS = 'browserless';
 }

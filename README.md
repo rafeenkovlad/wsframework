@@ -244,6 +244,142 @@ nats --server nats://nats:4222 stream view s3_pipeline_dlq
 php public/index.php start
 ```
 
+## Browserless Queue
+
+### Обзор
+
+Browserless Queue — пайплайн для снятия скриншотов и PDF со страниц через headless Chrome (Browserless).
+
+Пайплайн: `ProcessBrowserlessCallback` → Browserless (Puppeteer) → S3 Upload → Cleanup.
+
+Контейнер `browserless` содержит Chrome, Node.js (Browserless API) и PHP (worker).
+
+### Fingerprint-профили
+
+Каждый запрос использует fingerprint-профиль для anti-detection (User-Agent, WebGL, canvas, viewport и т.д.).
+
+Доступные профили определены в `PoolBrowserFingerprint`:
+
+| Профиль | Платформа |
+| --- | --- |
+| `chrome_win10` | Windows 10, Chrome 131, GTX 1660 SUPER |
+| `chrome_win11` | Windows 11, Chrome 132, RTX 3060 |
+| `chrome_macos` | macOS, Chrome 131, Apple M1 |
+| `chrome_linux` | Linux, Chrome 131, Intel UHD 630 |
+| `firefox_win10` | Windows 10, Firefox 133 |
+| `safari_macos` | macOS, Safari 18.1, Apple M1 |
+| `chrome_android` | Android 14, Pixel 8 Pro (mobile) |
+| `safari_iphone` | iPhone, Safari 18.1 (mobile) |
+| `edge_win11` | Windows 11, Edge 131, RX 580 |
+| `yandex_win10` | Windows 10, Yandex Browser 24.12 |
+
+Если `fingerprint` не указан в запросе — выбирается случайный профиль.
+
+### Cookie Warmup
+
+Cookies хранятся в Chrome-профиле (`storage/profiles/<fingerprint>/Default/Cookies`) в формате SQLite. PHP читает и расшифровывает их напрямую через `CookieStorageProvider` + `ChromeCookieDecryptor`.
+
+#### Как прогреть cookies
+
+1. Зайти в контейнер:
+
+```bash
+docker exec -it container_browserless_worker bash
+```
+
+2. Запустить warmup-сессию:
+
+```bash
+xvfb-run node /var/www/html/scripts/browserless-warmup.mjs --fingerprint chrome_win10
+```
+
+`xvfb-run` создаёт виртуальный дисплей для headless Chrome с GUI-рендерингом (нужен для корректной работы WebGL, canvas fingerprinting и прочих API, которые требуют реального рендер-контекста).
+
+3. Подключиться к Chrome DevTools:
+
+- Открыть `chrome://inspect` в локальном браузере
+- Нажать **Configure...** → добавить `localhost:9222` → **Done**
+- Найти Remote Target → нажать **inspect**
+
+4. В открывшемся DevTools перейти на нужные сайты (google.com, youtube.com, avito.ru и т.д.) — Chrome автоматически накопит cookies в профиле.
+
+5. Завершить сессию `Ctrl+C`. Cookies останутся в SQLite-файле профиля.
+
+#### Проверка cookies
+
+Проверить количество cookies в профиле:
+
+```bash
+docker exec container_browserless_worker php -r "
+require '/var/www/html/vendor/autoload.php';
+\$db = new SQLite3('/var/www/html/storage/profiles/chrome_win10/Default/Cookies', SQLITE3_OPEN_READONLY);
+var_dump(\$db->querySingle('SELECT COUNT(*) FROM cookies'));
+\$db->close();
+"
+```
+
+Или через API:
+
+```bash
+curl -X POST http://localhost:8091/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "id": 1,
+    "method": "BrowserlessQueue.ListFingerprintCookies",
+    "params": {}
+  }'
+```
+
+Получить расшифрованные cookies для конкретного профиля:
+
+```bash
+curl -X POST http://localhost:8091/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "id": 1,
+    "method": "BrowserlessQueue.GetFingerprintCookies",
+    "params": { "fingerprint": "chrome_win10" }
+  }'
+```
+
+### Пример запроса Browserless
+
+```bash
+curl -X POST http://localhost:8091/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "id": 1,
+    "method": "BrowserlessQueue.ProcessBrowserlessCallback",
+    "params": {
+      "url": "https://example.com/page",
+      "outputS3Prefix": "output/screenshots/",
+      "format": "png",
+      "fingerprint": "chrome_win10"
+    }
+  }'
+```
+
+**Важно:** если нужно использовать прогретые cookies — обязательно указывайте `"fingerprint": "chrome_win10"` (или другой профиль, для которого делали warmup). Без этого параметра выбирается случайный профиль, у которого может не быть cookies.
+
+### Cookie Management API
+
+| Метод | Назначение |
+| --- | --- |
+| `BrowserlessQueue.ListFingerprintCookies` | Список профилей с количеством cookies |
+| `BrowserlessQueue.GetFingerprintCookies` | Получить расшифрованные cookies профиля |
+| `BrowserlessQueue.DeleteFingerprintCookies` | Удалить все cookies из профиля |
+
+### Как работает шифрование cookies
+
+Chrome на Linux (в контейнере без keyring) шифрует cookies в формате `v10`:
+
+- Алгоритм: AES-128-CBC
+- Ключ: `PBKDF2('peanuts', 'saltysalt', iterations=1, keylen=16)`
+- IV: 16 байт `0x20` (пробел)
+- Первые 3 байта `encrypted_value` — префикс `v10`, за ними AES-шифротекст
+
+`ChromeCookieDecryptor` автоматически расшифровывает значения при чтении.
+
 ## Ограничения и замечания
 
 - Текущий bootstrap поднимает только FFmpeg queue сервис.

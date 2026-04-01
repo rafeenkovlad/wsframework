@@ -10,11 +10,11 @@ use WsFramework\Channel\KVNatsBucket\KVNatsBucket;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Pool\Http\PoolHttpConnection;
-use WsFramework\Trait\FfmpegJobIdValidationTrait;
+use WsFramework\Trait\JobIdValidationTrait;
 
 class GetJobStatus extends MethodAbstract
 {
-    use FfmpegJobIdValidationTrait;
+    use JobIdValidationTrait;
 
     public static function getMethodName(): string
     {

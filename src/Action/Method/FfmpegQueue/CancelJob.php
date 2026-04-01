@@ -11,11 +11,11 @@ use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
 use WsFramework\Pool\Http\PoolHttpConnection;
-use WsFramework\Trait\FfmpegJobIdValidationTrait;
+use WsFramework\Trait\JobIdValidationTrait;
 
 class CancelJob extends MethodAbstract
 {
-    use FfmpegJobIdValidationTrait;
+    use JobIdValidationTrait;
     public static function getMethodName(): string
     {
         return 'FfmpegQueue.CancelJob';

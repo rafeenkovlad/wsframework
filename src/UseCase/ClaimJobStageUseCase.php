@@ -7,6 +7,7 @@ namespace WsFramework\UseCase;
 use JsonException;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\ClaimResult;
+use WsFramework\Enum\JobType;
 use WsFramework\Exception\UseCaseException;
 
 /**
@@ -31,8 +32,9 @@ class ClaimJobStageUseCase
         JobKVDTO $dto,
         array $allowedStatuses,
         string $activeStatus,
+        ?JobType $jobType = null,
     ): ClaimResult {
-        $kv = GetKVInterfaceUseCase::handle();
+        $kv = ($jobType ?? JobType::FFMPEG)->kvBucket();
         $entry = $kv->getEntry($dto->jobId);
         if ($entry === null) {
             throw new UseCaseException("Job not found: {$dto->jobId}");
