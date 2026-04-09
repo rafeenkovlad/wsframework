@@ -11,7 +11,9 @@ use WsFramework\Dto\MethodDTO;
 use WsFramework\Service\ServiceAbstract;
 use WsFramework\Service\HelpService\TransportStrategyService\TransportStrategyInterface;
 use Workerman\Connection\TcpConnection;
+use Workerman\Timer;
 use Workerman\Worker;
+use WsFramework\UseCase\CheckAllQueuesIdleUseCase;
 use WsFramework\UseCase\DefineCurrentChannelUseCase;
 
 class NatsJetstreamService extends ServiceAbstract
@@ -30,6 +32,19 @@ class NatsJetstreamService extends ServiceAbstract
             $config->channel = NatsChannel::main();
             DefineCurrentChannelUseCase::handle($config);
             KVNatsBucket::main();
+
+            $interval = (int) ($_ENV['IDLE_CHECK_INTERVAL_SEC']);
+
+            Timer::add($interval, static function (): void {
+                $result = CheckAllQueuesIdleUseCase::handle();
+
+                echo sprintf(
+                    "[IdleCheck] idle=%s activeJobs=%d breakdown=%s\n",
+                    $result['idle'] ? 'true' : 'false',
+                    $result['activeJobs'],
+                    json_encode($result['breakdown']),
+                );
+            });
 
             echo "NatsJetstreamService started on worker {$worker->id}\n";
         };

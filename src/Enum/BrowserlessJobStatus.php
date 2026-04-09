@@ -39,6 +39,20 @@ enum BrowserlessJobStatus: string implements JobStatusInterface
             self::BROWSERLESS_PROCESSING_RESTARTED,
             self::BROWSERLESS_S3_UPLOAD_PENDING,
             self::BROWSERLESS_S3_UPLOAD_RESTARTED,
+            self::BROWSERLESS_S3_UPLOAD_FAILED,
         ]);
+    }
+
+    public function isTerminal(): bool
+    {
+        return in_array(
+            $this,
+            [
+                self::BROWSERLESS_COMPLETED,
+                self::BROWSERLESS_FAILED,
+                self::BROWSERLESS_CANCELLED,
+                self::BROWSERLESS_PROCESSING_RESTARTED,
+            ]
+        );
     }
 }

@@ -246,7 +246,9 @@ class CookieStorageProvider
             if (is_dir($path)) {
                 $this->recursiveDelete($path);
             } else {
-                unlink($path);
+                if (is_file($path)) {
+                    unlink($path);
+                }
             }
         }
 

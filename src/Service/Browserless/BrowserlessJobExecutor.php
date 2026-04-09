@@ -33,7 +33,7 @@ class BrowserlessJobExecutor
     ) {
         $this->httpClient = new Client([
             'base_uri'    => $this->apiUrl,
-            'timeout'     => 180,
+            'timeout'     => $_ENV['BROWSERLESS_CLIENT_TIMEOUT'] ,
             'http_errors' => false,
         ]);
     }
@@ -125,7 +125,7 @@ class BrowserlessJobExecutor
         $jsAntiDetection = json_encode($antiDetectionJs);
 
         $outputCode = match ($format) {
-            'pdf'   => "const result = await page.pdf({ format: 'A4', printBackground: true });\n      const resultType = 'application/pdf';",
+            'pdf'   => "await page.addStyleTag({ content: '* { overflow-wrap: break-word; word-break: break-word; }' });\n      const result = await page.pdf({ format: 'A4', printBackground: true });\n      const resultType = 'application/pdf';",
             default => "const result = await page.screenshot({ fullPage: true, type: 'png' });\n      const resultType = 'image/png';",
         };
 
@@ -283,7 +283,7 @@ class BrowserlessJobExecutor
                 }
             }
             $stealthParam = $stealthEnabled ? 'stealth&' : '';
-            $endpoint = '/function?' . $stealthParam . implode('&', $queryParts);
+            $endpoint = '/function?' . $stealthParam . '&' . implode('&', $queryParts);
 
             $response = $this->httpClient->post($endpoint, [
                 RequestOptions::JSON => $requestBody,

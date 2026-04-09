@@ -10,5 +10,7 @@ interface JobStatusInterface
 
     public function isRestartable(): bool;
 
+    public function isTerminal(): bool;
+
     public function getValue(): mixed;
 }

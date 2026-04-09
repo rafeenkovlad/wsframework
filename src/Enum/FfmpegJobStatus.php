@@ -33,6 +33,22 @@ enum FfmpegJobStatus: string implements JobStatusInterface
         ]);
     }
 
+    public function isTerminal(): bool
+    {
+        return in_array(
+            $this,
+            [
+                self::COMPLETED,
+                self::FAILED,
+                self::CANCELLED,
+                self::PROCESSING_RESTARTED,
+                self::S3_DOWNLOAD_FAILED,
+                self::S3_UPLOAD_FAILED,
+
+            ]
+        );
+    }
+
     public function pipeline(): Pipeline
     {
         return match ($this) {
