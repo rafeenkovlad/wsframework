@@ -13,6 +13,7 @@ use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Dto\UseCase\KVMergeOptionsDTO;
 use WsFramework\Enum\BrowserlessJobStatus;
 use WsFramework\Enum\JobType;
+use WsFramework\Middleware\ApiKeyAuth;
 use WsFramework\Middleware\MethodParamsToDTO;
 use WsFramework\Pool\Http\PoolHttpConnection;
 use WsFramework\UseCase\DispatchJobByStatusUseCase;
@@ -46,9 +47,13 @@ class ProcessBrowserlessCallback extends MethodAbstract
         return false;
     }
 
-    protected static function middleware(int $workerId, int $connectionId, MethodDTO $methodDTO): void
+    protected static function middleware(int $workerId, int $connectionId, MethodDTO $methodDTO): bool
     {
+        if (!ApiKeyAuth::check($methodDTO)) {
+            return false;
+        }
         MethodParamsToDTO::main($methodDTO, ProcessBrowserlessCallbackParamsDTO::class);
+        return true;
     }
 
     public static function validate(MethodDTO $methodDTO, &$errors): void

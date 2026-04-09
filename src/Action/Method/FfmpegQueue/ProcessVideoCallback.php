@@ -12,6 +12,7 @@ use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\ProcessVideoCallbackParamsDTO;
 use WsFramework\Dto\UseCase\JobKVDTO;
 use WsFramework\Enum\FfmpegJobStatus;
+use WsFramework\Middleware\ApiKeyAuth;
 use WsFramework\Middleware\MethodParamsToDTO;
 use WsFramework\Pool\Http\PoolHttpConnection;
 use WsFramework\UseCase\DispatchJobByStatusUseCase;
@@ -46,9 +47,13 @@ class ProcessVideoCallback extends MethodAbstract
         return false;
     }
 
-    protected static function middleware(int $workerId, int $connectionId, MethodDTO $methodDTO): void
+    protected static function middleware(int $workerId, int $connectionId, MethodDTO $methodDTO): bool
     {
+        if (!ApiKeyAuth::check($methodDTO)) {
+            return false;
+        }
         MethodParamsToDTO::main($methodDTO, ProcessVideoCallbackParamsDTO::class);
+        return true;
     }
 
     public static function validate(MethodDTO $methodDTO, &$errors): void

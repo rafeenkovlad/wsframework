@@ -300,8 +300,8 @@ class BrowserlessJobExecutor
 
             $body = (string) $response->getBody();
 
-            $extension = $format === 'pdf' ? 'pdf' : 'png';
-            $outputPath = "tmp_jobs/{$jobId}/output.{$extension}";
+            $filename = $format === 'pdf' ? 'listing.pdf' : 'listing.png';
+            $outputPath = "tmp_jobs/{$jobId}/{$filename}";
 
             $tmpFullPath = $filesDirectory . $outputPath;
             $this->saveOutputFile($tmpFullPath, $body, $jobId);

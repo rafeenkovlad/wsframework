@@ -86,6 +86,10 @@ final class CheckAllQueuesIdleUseCase extends AbstractUseCase
         return $activeCount;
     }
 
+    /**
+     * @return void
+     * @throws \GuzzleHttp\Exception\GuzzleException
+     */
     private function shutdown(): void
     {
         $serverId = $_ENV['CLOUD_SERVER_ID'] ?? '';
@@ -104,11 +108,16 @@ final class CheckAllQueuesIdleUseCase extends AbstractUseCase
             RequestOptions::HEADERS => ['Authorization' => "Bearer {$apiKey}"],
         ]);
 
-        $this->idleCountCheckWithTrue = 0;
-
         echo '[' . date('Y-m-d H:i:s') . '] Shutdown request sent.' . PHP_EOL;
     }
 
+    /**
+     * @param DataTransferObject|null $DTO
+     * @param ...$args
+     * @return array
+     * @throws JsonException
+     * @throws \Throwable
+     */
     public static function handle(?DataTransferObject $DTO = null, ...$args): array
     {
        return static::create()

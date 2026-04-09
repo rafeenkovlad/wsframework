@@ -9,6 +9,7 @@ use WsFramework\Action\Response\ResponseAbstract;
 use WsFramework\Channel\ChannelAbstract;
 use WsFramework\Dto\MethodDTO;
 use WsFramework\Dto\ResponseDTO;
+use WsFramework\Middleware\ApiKeyAuth;
 use WsFramework\Pool\PoolConnectionInterface;
 use WsFramework\Service\HelpService\CloseConnectionStrategy\CloseConnectionStrategyInterface;
 use Symfony\Component\Validator\ConstraintViolationListInterface;
@@ -87,7 +88,11 @@ abstract class MethodAbstract extends MethodOpenRPCAbstract
         MethodDTO $methodDTO,
     ): void
     {
-        static::middleware($workerId, $connectionId, $methodDTO);
+        if (!static::middleware($workerId, $connectionId, $methodDTO)) {
+            $methodDTO->response->errors = ['message' => 'Unauthorized'];
+            static::sendResponse($connectionId, $methodDTO->response, Error::class);
+            return;
+        }
         static::validate($methodDTO, $errors);
         if (static::isNotValidated($errors)) {
             static::errorsResponse($connectionId, $methodDTO, $errors);
@@ -222,9 +227,9 @@ abstract class MethodAbstract extends MethodOpenRPCAbstract
      * @param MethodDTO $methodDTO
      * @return void
      */
-    protected static function middleware(int $workerId, int $connectionId, MethodDTO $methodDTO): void
+    protected static function middleware(int $workerId, int $connectionId, MethodDTO $methodDTO): bool
     {
-
+        return ApiKeyAuth::check($methodDTO);
     }
 
     private static function errorsFormated(ConstraintViolationListInterface &$errors): void
