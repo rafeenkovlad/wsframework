@@ -47,8 +47,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '3'
-          memory: 2048M
+          cpus: '6'
+          memory: 4096M
     build:
       context: ./container/ffmpeg
     volumes:
@@ -86,8 +86,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2048M
+          cpus: '6'
+          memory: 4096M
     build:
       context: ./container/browserless
     volumes:

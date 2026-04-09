@@ -33,7 +33,7 @@ final class CheckAllQueuesIdleUseCase extends AbstractUseCase
      * @return array{idle: bool, activeJobs: int, breakdown: array<string, int>}
      * @throws JsonException|\Throwable
      */
-    public function execute(): array
+    private function execute(): array
     {
         $totalActive = 0;
         $breakdown = [];
