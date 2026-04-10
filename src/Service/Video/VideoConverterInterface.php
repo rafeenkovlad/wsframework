@@ -16,4 +16,15 @@ interface VideoConverterInterface
      * Возвращает имя выходного файла (с расширением .m3u8).
      */
     public function convertToHls(string $filePath, int $width, int $height): string;
+
+    /**
+     * Проверяет, что видео уже сжато (H.264 + длинная сторона ≤ maxWidth).
+     */
+    public function isAlreadyCompressed(string $filePath): bool;
+
+    /**
+     * Нарезает видео в HLS через stream copy (без перекодирования).
+     * Возвращает имя выходного файла (с расширением .m3u8).
+     */
+    public function copyToHls(string $filePath): string;
 }

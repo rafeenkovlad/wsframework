@@ -4,6 +4,17 @@ services:
       - '4222:4222'
       - '8222:8222'
   browserless:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048M
     ports:
       - "3000:3000"
       - "9222:9222"   # Chrome DevTools for warmup sessions
+  ffmpeg:
+    deploy:
+      resources:
+        limits:
+          cpus: '3'
+          memory: 2048M
