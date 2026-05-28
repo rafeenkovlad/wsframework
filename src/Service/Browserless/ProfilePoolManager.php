@@ -51,6 +51,10 @@ class ProfilePoolManager
                     try {
                         $kv->update($profileName, json_encode($data), $entry->revision);
                         echo "ProfilePool: job {$jobId} claimed profile {$profileName}\n";
+
+                        // Очистить поврежденный SingletonLock если он существует
+                        $this->cleanupCorruptedSingletonLock($profileName);
+
                         return $profileName;
                     } catch (\Throwable) {
                         // Другой воркер захватил раньше, продолжить поиск
@@ -206,5 +210,36 @@ class ProfilePoolManager
         }
 
         return $profiles;
+    }
+
+    /**
+     * Очистить поврежденный SingletonLock если он существует.
+     * Chrome создает символическую ссылку SingletonLock для предотвращения
+     * одновременного использования профиля. Если процесс крашится, ссылка
+     * может остаться в поврежденном состоянии.
+     */
+    private function cleanupCorruptedSingletonLock(string $profileName): void
+    {
+        $profilePath = $this->getProfilePath($profileName);
+        $lockPath = $profilePath . '/SingletonLock';
+
+        if (!file_exists($lockPath)) {
+            return; // Файл не существует, все ОК
+        }
+
+        // Проверить, является ли это символической ссылкой
+        if (is_link($lockPath)) {
+            // Попытаться прочитать ссылку
+            $target = @readlink($lockPath);
+            if ($target === false) {
+                // readlink() failed — ссылка повреждена
+                echo "ProfilePool: detected corrupted SingletonLock in {$profileName}, removing\n";
+                @unlink($lockPath);
+            }
+        } else {
+            // Это обычный файл, а не символическая ссылка — тоже неправильно
+            echo "ProfilePool: detected invalid SingletonLock (not a symlink) in {$profileName}, removing\n";
+            @unlink($lockPath);
+        }
     }
 }
