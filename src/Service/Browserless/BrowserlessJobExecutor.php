@@ -183,7 +183,7 @@ class BrowserlessJobExecutor
         $browserlessJob = $jobData->browserlessJob;
 
         $cookieStorage = new CookieStorageProvider();
-        $tmpProfilePath = null;
+        $profilePath = null;
 
         try {
             if ($browserlessJob === null) {
@@ -233,16 +233,11 @@ class BrowserlessJobExecutor
                 $launchArgs[] = '--proxy-server=' . $proxy;
             }
 
-            // Copy master profile to tmp if it exists
+            // Use master profile directly if it exists
             if ($cookieStorage->profileExists($fingerprintName)) {
-                try {
-                    $tmpProfilePath = $cookieStorage->copyProfileToTmp($fingerprintName, $jobId);
-                    $launchArgs[] = '--user-data-dir=' . $tmpProfilePath;
-                    echo "BrowserlessJobExecutor: job {$jobId} — using profile copy for fingerprint {$fingerprintName}\n";
-                } catch (\Throwable $e) {
-                    echo "BrowserlessJobExecutor: job {$jobId} — profile copy failed: {$e->getMessage()}\n";
-                    $tmpProfilePath = null;
-                }
+                $profilePath = $cookieStorage->getProfilePath($fingerprintName);
+                $launchArgs[] = '--user-data-dir=' . $profilePath;
+                echo "BrowserlessJobExecutor: job {$jobId} — using master profile for fingerprint {$fingerprintName}\n";
             }
 
             // Load saved cookies for injection
@@ -306,10 +301,7 @@ class BrowserlessJobExecutor
             $tmpFullPath = $filesDirectory . $outputPath;
             $this->saveOutputFile($tmpFullPath, $body, $jobId);
 
-            // Cleanup tmp profile
-            if ($tmpProfilePath !== null) {
-                $cookieStorage->cleanupTmpProfile($jobId);
-            }
+            // No cleanup needed - using master profile directly
 
             $jobData = new JobKVDTO(
                 jobId: $jobId,
@@ -339,10 +331,7 @@ class BrowserlessJobExecutor
 
             return $jobData;
         } catch (\Throwable $e) {
-            // Cleanup tmp profile on failure
-            if ($tmpProfilePath !== null) {
-                $cookieStorage->cleanupTmpProfile($jobId);
-            }
+            // No cleanup needed - using master profile directly
 
             echo "BrowserlessJobExecutor: job {$jobId} retry {$jobData->retryCount}/{$jobData->maxRetries}\n";
             ThrowableHandleUseCase::handle($jobData, $e);
