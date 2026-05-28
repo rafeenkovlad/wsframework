@@ -157,7 +157,24 @@ class BrowserlessJobExecutor
           }
           {$cookieInjection}
 
-          await page.goto(context.url, { waitUntil: 'networkidle2', timeout: 180000 });
+          try {
+              await page.goto(context.url, { waitUntil: 'networkidle2', timeout: 180000 });
+          } catch (error) {
+              // Сделать скриншот для диагностики при таймауте
+              const screenshot = await page.screenshot({
+                  fullPage: false,
+                  encoding: 'base64'
+              });
+              console.error('Page load timeout or error. Screenshot saved for diagnostics.');
+              console.error('Error:', error.message);
+
+              // Вернуть скриншот вместо PDF для анализа
+              return {
+                  data: screenshot,
+                  type: 'image/png',
+                  error: error.message
+              };
+          }
 
           {$outputCode}
 
@@ -301,6 +318,24 @@ class BrowserlessJobExecutor
             }
 
             $body = (string) $response->getBody();
+
+            // Проверить, не вернулся ли JSON с ошибкой и скриншотом
+            $jsonData = json_decode($body, true);
+            if (is_array($jsonData) && isset($jsonData['error'])) {
+                // Это ответ с ошибкой и скриншотом для диагностики
+                $screenshotData = base64_decode($jsonData['data']);
+                $screenshotPath = "tmp_jobs/{$jobId}/timeout_screenshot.png";
+                $screenshotFullPath = $filesDirectory . $screenshotPath;
+                $this->saveOutputFile($screenshotFullPath, $screenshotData, $jobId);
+
+                echo "BrowserlessJobExecutor: job {$jobId} — page load timeout, screenshot saved to {$screenshotPath}\n";
+                echo "BrowserlessJobExecutor: job {$jobId} — error: {$jsonData['error']}\n";
+
+                throw new PipelineException(
+                    Pipeline::BROWSERLESS->getName(),
+                    "Page load timeout for job {$jobId}: {$jsonData['error']}. Screenshot saved to {$screenshotPath}",
+                );
+            }
 
             $filename = $format === 'pdf' ? 'listing.pdf' : 'listing.png';
             $outputPath = "tmp_jobs/{$jobId}/{$filename}";
