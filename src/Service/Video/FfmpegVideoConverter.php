@@ -7,6 +7,7 @@ namespace WsFramework\Service\Video;
 use FFMpeg\FFProbe\DataMapping\Stream;
 use Streaming\FFMpeg as StreamFFmpeg;
 use Streaming\Representation;
+use Symfony\Component\Process\Process;
 
 class FfmpegVideoConverter implements VideoConverterInterface
 {
@@ -98,6 +99,57 @@ class FfmpegVideoConverter implements VideoConverterInterface
             ->save();
 
         $filePath = preg_replace('/^(.*?)\.(mp4|avi|mov|mkv|flv|wmv|webm|mpeg|mpg|m4v|3gp|ogv)$/six', '$1', $filePath);
+
+        return $filePath . '.m3u8';
+    }
+
+    public function isAlreadyCompressed(string $filePath): bool
+    {
+        $ffmpeg = StreamFFmpeg::create($this->config);
+        $video = $ffmpeg->open($this->filesDirectory . $filePath);
+        $stream = $video->getStreams()->videos()->first();
+
+        if (!$stream instanceof Stream) {
+            return false;
+        }
+
+        if ($stream->get('codec_name') !== 'h264') {
+            return false;
+        }
+
+        $width = (int) $stream->get('width');
+        $height = (int) $stream->get('height');
+
+        $rotation = $this->getStreamRotation($stream);
+        if ($rotation === 90 || $rotation === 270) {
+            [$width, $height] = [$height, $width];
+        }
+
+        $longSide = max($width, $height);
+
+        return $longSide <= $this->maxWidth;
+    }
+
+    public function copyToHls(string $filePath): string
+    {
+        $absolutePath = $this->filesDirectory . $filePath;
+        $outputBase = preg_replace('/\.(mp4|avi|mov|mkv|flv|wmv|webm|mpeg|mpg|m4v|3gp|ogv)$/si', '', $absolutePath);
+        $outputM3u8 = $outputBase . '.m3u8';
+
+        $process = new Process([
+            $this->config['ffmpeg.binaries'],
+            '-i', $absolutePath,
+            '-c', 'copy',
+            '-hls_time', (string) $this->hlsTime,
+            '-hls_list_size', '0',
+            '-hls_segment_type', 'mpegts',
+            '-f', 'hls',
+            $outputM3u8,
+        ]);
+        $process->setTimeout($this->config['timeout']);
+        $process->mustRun();
+
+        $filePath = preg_replace('/\.(mp4|avi|mov|mkv|flv|wmv|webm|mpeg|mpg|m4v|3gp|ogv)$/si', '', $filePath);
 
         return $filePath . '.m3u8';
     }

@@ -96,12 +96,17 @@ readonly class FfmpegJobExecutor
                 throw new PipelineException(Pipeline::FFMPEG->getName(), "inputFile is required for job {$jobId}");
             }
 
-            $dimensions = $this->converter->getDimensions($inputFile);
-            $outputFile = $this->converter->convertToHls(
-                $inputFile,
-                $dimensions['width'],
-                $dimensions['height'],
-            );
+            if ($this->converter->isAlreadyCompressed($inputFile)) {
+                $outputFile = $this->converter->copyToHls($inputFile);
+                echo "FfmpegJobExecutor: job {$jobId} stream copy (already compressed)\n";
+            } else {
+                $dimensions = $this->converter->getDimensions($inputFile);
+                $outputFile = $this->converter->convertToHls(
+                    $inputFile,
+                    $dimensions['width'],
+                    $dimensions['height'],
+                );
+            }
 
             $localHlsDir = $this->filesDirectory . dirname($outputFile) . '/';
             $playlistFile = basename($outputFile);

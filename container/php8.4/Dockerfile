@@ -18,7 +18,8 @@ RUN apt-get update && \
             libexif-dev \
             libgd-dev \
             libpq-dev \
-        && docker-php-ext-install exif gd && \
+            libzip-dev \
+        && docker-php-ext-install exif gd zip && \
         docker-php-ext-install pdo pdo_pgsql pgsql && \
     chmod -R +x /var/www/html/ && \
     mkdir /var/log/m4 && \
