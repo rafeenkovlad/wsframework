@@ -183,7 +183,9 @@ class BrowserlessJobExecutor
         $browserlessJob = $jobData->browserlessJob;
 
         $cookieStorage = new CookieStorageProvider();
+        $profilePool = new ProfilePoolManager($_ENV['BROWSERLESS_PROFILES_DIR'] ?? '/var/www/html/storage/profiles');
         $profilePath = null;
+        $profileName = null;
 
         try {
             if ($browserlessJob === null) {
@@ -233,11 +235,16 @@ class BrowserlessJobExecutor
                 $launchArgs[] = '--proxy-server=' . $proxy;
             }
 
-            // Use master profile directly if it exists
-            if ($cookieStorage->profileExists($fingerprintName)) {
-                $profilePath = $cookieStorage->getProfilePath($fingerprintName);
+            // Use profile from pool if available
+            $fingerprintBase = $fingerprintName;
+            try {
+                $profileName = $profilePool->claimProfile($fingerprintBase, $jobId);
+                $profilePath = $profilePool->getProfilePath($profileName);
                 $launchArgs[] = '--user-data-dir=' . $profilePath;
-                echo "BrowserlessJobExecutor: job {$jobId} — using master profile for fingerprint {$fingerprintName}\n";
+                echo "BrowserlessJobExecutor: job {$jobId} — using profile {$profileName} for fingerprint {$fingerprintName}\n";
+            } catch (\Throwable $e) {
+                echo "BrowserlessJobExecutor: job {$jobId} — failed to claim profile: {$e->getMessage()}\n";
+                throw $e;
             }
 
             // Load saved cookies for injection
@@ -301,7 +308,10 @@ class BrowserlessJobExecutor
             $tmpFullPath = $filesDirectory . $outputPath;
             $this->saveOutputFile($tmpFullPath, $body, $jobId);
 
-            // No cleanup needed - using master profile directly
+            // Release profile
+            if ($profileName !== null) {
+                $profilePool->releaseProfile($profileName, $jobId);
+            }
 
             $jobData = new JobKVDTO(
                 jobId: $jobId,
@@ -331,7 +341,14 @@ class BrowserlessJobExecutor
 
             return $jobData;
         } catch (\Throwable $e) {
-            // No cleanup needed - using master profile directly
+            // Release profile on failure
+            if ($profileName !== null) {
+                try {
+                    $profilePool->releaseProfile($profileName, $jobId);
+                } catch (\Throwable $releaseError) {
+                    echo "BrowserlessJobExecutor: job {$jobId} — failed to release profile: {$releaseError->getMessage()}\n";
+                }
+            }
 
             echo "BrowserlessJobExecutor: job {$jobId} retry {$jobData->retryCount}/{$jobData->maxRetries}\n";
             ThrowableHandleUseCase::handle($jobData, $e);

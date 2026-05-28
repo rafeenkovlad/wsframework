@@ -16,6 +16,7 @@ use WsFramework\Exception\S3\PipelineException;
 use WsFramework\Exception\UseCaseException;
 use WsFramework\Process\DefaultProcess\BackgroundProcessAbstract;
 use WsFramework\Service\Browserless\BrowserlessJobExecutor;
+use WsFramework\Service\Browserless\ProfilePoolManager;
 use WsFramework\UseCase\DefineCurrentChannelUseCase;
 use WsFramework\UseCase\DefineCurrentPipelineUseCase;
 use WsFramework\UseCase\DispatchJobByStatusUseCase;
@@ -62,6 +63,10 @@ class BrowserlessQueueProcess extends BackgroundProcessAbstract
             DefineCurrentPipelineUseCase::handle($config);
             DefineCurrentChannelUseCase::handle($config);
             KVNatsBucket::main();
+
+            // Инициализировать пул профилей
+            $profilePool = new ProfilePoolManager($_ENV['BROWSERLESS_PROFILES_DIR'] ?? '/var/www/html/storage/profiles');
+            $profilePool->initializePool();
 
             static::recoveryJob();
 
