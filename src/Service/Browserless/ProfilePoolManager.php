@@ -23,12 +23,16 @@ class ProfilePoolManager
      */
     public function claimProfile(string $fingerprintBase, string $jobId): string
     {
+        echo "ProfilePool: job {$jobId} requesting profile for fingerprint {$fingerprintBase}\n";
+
         $kv = KVNatsBucket::bucketInterface()->bucket(self::BUCKET_NAME);
         $startTime = time();
 
         while (true) {
             // Получить все профили для fingerprint
             $profiles = $this->getProfilesForFingerprint($kv, $fingerprintBase);
+
+            echo "ProfilePool: job {$jobId} found " . count($profiles) . " profiles for {$fingerprintBase}\n";
 
             if (empty($profiles)) {
                 throw new RuntimeException("No profiles found for fingerprint: {$fingerprintBase}");
@@ -115,6 +119,8 @@ class ProfilePoolManager
      */
     public function initializePool(): void
     {
+        echo "ProfilePool: initializing pool from directory: {$this->profilesDir}\n";
+
         $kv = KVNatsBucket::bucketInterface()->bucket(self::BUCKET_NAME);
 
         $entries = scandir($this->profilesDir);
@@ -135,6 +141,8 @@ class ProfilePoolManager
                 continue;
             }
 
+            echo "ProfilePool: processing profile: {$entry}\n";
+
             $existing = $kv->get($entry);
             if ($existing === null) {
                 // Создать новую запись
@@ -147,6 +155,7 @@ class ProfilePoolManager
                 ];
                 $kv->put($entry, json_encode($data));
                 $initialized++;
+                echo "ProfilePool: initialized new profile: {$entry}\n";
             } else {
                 // Сбросить статус в "free" (на случай краша)
                 $data = json_decode($existing, true);
@@ -158,6 +167,7 @@ class ProfilePoolManager
                     try {
                         $kv->update($entry, json_encode($data), $entry_obj->revision);
                         $recovered++;
+                        echo "ProfilePool: recovered stuck profile: {$entry}\n";
                     } catch (\Throwable) {
                         // Ignore conflicts
                     }
