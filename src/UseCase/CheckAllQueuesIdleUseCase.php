@@ -105,7 +105,7 @@ final class CheckAllQueuesIdleUseCase extends AbstractUseCase
         $client = new Client(['base_uri' => $apiUrl, 'http_errors' => false]);
         $client->post("/api/v2/cloud-servers/{$serverId}/actions/", [
             RequestOptions::JSON    => ['status' => -1],
-            RequestOptions::HEADERS => ['Authorization' => "Bearer {$apiKey}"],
+            RequestOptions::HEADERS => ['Authorization' => "Token {$apiKey}"],
         ]);
 
         echo '[' . date('Y-m-d H:i:s') . '] Shutdown request sent.' . PHP_EOL;
